@@ -25,23 +25,19 @@ public class FairLossLink extends P2PLink implements Runnable {
 		var packet = new DatagramPacket(data, data.length, remote);
 		try {
 			sock.send(packet);
-		}
-		catch (IOException e) {
+		} catch (IOException e) {
 			// Ignore
 		}
 	}
 
 	// Receiver thread
-	public void run()
-	{
+	public void run() {
 		byte[] rxBuffer = new byte[64 * 1024];
 		DatagramPacket packet = new DatagramPacket(rxBuffer, rxBuffer.length);
-		while (true)
-		{
+		while (true) {
 			try {
 				sock.receive(packet);
-			}
-			catch (IOException e) {
+			} catch (IOException e) {
 				// Ignore
 				continue;
 			}

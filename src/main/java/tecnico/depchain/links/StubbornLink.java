@@ -85,8 +85,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 		if (bytes.length < 8)
 			return;
 
-		if (isACK(bytes))
-		{
+		if (isACK(bytes)) {
 			handleACK(bytes);
 			return;
 		}
@@ -98,12 +97,11 @@ public class StubbornLink extends P2PLink implements Runnable {
 		byte[] ack = makeACK(msg.id);
 		lower.Transmit(ack);
 
-		//Deliver message
+		// Deliver message
 		rxHandler.accept(msg.payload, this);
 	}
 
-	private void handleACK(byte[] bytes)
-	{
+	private void handleACK(byte[] bytes) {
 		MessageWithID msg = deserializeMsg(bytes);
 
 		// Simply remove from pending queue
@@ -111,8 +109,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 	}
 
 	// === Message building and utils ===
-	private MessageWithID serializeMsg(byte[] payload)
-	{
+	private MessageWithID serializeMsg(byte[] payload) {
 		long id = txCounter++;
 
 		var buffer = ByteBuffer.allocate(8 + payload.length);
@@ -122,8 +119,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 		return new MessageWithID(id, buffer.array());
 	}
 
-	private static MessageWithID deserializeMsg(byte[] bytes)
-	{
+	private static MessageWithID deserializeMsg(byte[] bytes) {
 		var buffer = ByteBuffer.wrap(bytes);
 		long id = buffer.getLong();
 		byte[] payload = new byte[bytes.length - 8];
@@ -132,24 +128,20 @@ public class StubbornLink extends P2PLink implements Runnable {
 		return new MessageWithID(id, payload);
 	}
 
-	private static byte[] makeACK(long id)
-	{
+	private static byte[] makeACK(long id) {
 		return ByteBuffer.allocate(8).putLong(id).array();
 	}
 
-	private static boolean isACK(byte[] bytes)
-	{
+	private static boolean isACK(byte[] bytes) {
 		return bytes.length == 8;
 	}
 }
 
-class MessageWithID
-{
+class MessageWithID {
 	Long id;
 	byte[] payload;
 
-	public MessageWithID(long id, byte[] payload)
-	{
+	public MessageWithID(long id, byte[] payload) {
 		this.id = Long.valueOf(id);
 		this.payload = payload;
 	}
