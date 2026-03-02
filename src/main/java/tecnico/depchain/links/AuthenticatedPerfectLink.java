@@ -20,7 +20,9 @@ import javax.crypto.SecretKey;
 public class AuthenticatedPerfectLink extends P2PLink {
 	private StubbornLink lower;
 	private Mac outgoing_mac, incoming_mac;
-	private Set<ByteBuffer> delivered = new HashSet<>();
+	private long txSeqNum = 0;
+	private long highWaterMark = -1;
+	private Set<Long> outOfOrder = new HashSet<>();
 
 	public AuthenticatedPerfectLink(InetSocketAddress remote, SecretKey ownKey, PublicKey remoteKey)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException {
@@ -41,20 +43,29 @@ public class AuthenticatedPerfectLink extends P2PLink {
 
 	@Override
 	public void Transmit(byte[] data) {
-		byte[] mac_bytes = outgoing_mac.doFinal(data);
+		long seq = txSeqNum++;
 
-		var buffer = ByteBuffer.allocate(32 + data.length);
+		// Prepend sequence number to payload
+		var seqBuffer = ByteBuffer.allocate(8 + data.length);
+		seqBuffer.putLong(seq);
+		seqBuffer.put(data);
+		byte[] dataWithSeq = seqBuffer.array();
+
+		// Compute MAC over data+seq and prepend it
+		byte[] mac_bytes = outgoing_mac.doFinal(dataWithSeq);
+
+		var buffer = ByteBuffer.allocate(32 + dataWithSeq.length);
 		buffer.put(mac_bytes);
-		buffer.put(data);
+		buffer.put(dataWithSeq);
 
 		lower.Transmit(buffer.array());
 	}
 
 	// Handler for lower receive
 	private void internalRxHandler(byte[] bytes, P2PLink _unused) {
-		// Ignore too small to contain MAC
-		// Prevents crash on malformed messages (by bizantine nodes)
-		if (bytes.length < 32)
+		// Ignore too small to contain MAC + sequence number
+		// Prevents crash on malformed messages (by byzantine nodes)
+		if (bytes.length < 32 + 8)
 			return;
 
 		byte[] received_mac = new byte[32];
@@ -70,13 +81,26 @@ public class AuthenticatedPerfectLink extends P2PLink {
 				return; // Ignore bad message
 		}
 
-		// Deduplicate messages
-		ByteBuffer key = ByteBuffer.wrap(payload);
-		synchronized (delivered) {
-			if (!delivered.add(key))
+		// Extract sequence number for deduplication
+		var payloadBuffer = ByteBuffer.wrap(payload);
+		long seqNum = payloadBuffer.getLong();
+
+		// Deduplicate using high water mark + out-of-order set
+		synchronized (outOfOrder) {
+			if (seqNum <= highWaterMark)
 				return; // Already delivered
+			if (!outOfOrder.add(seqNum))
+				return; // Already pending/delivered
+
+			// Advance high water mark as far as possible
+			while (outOfOrder.remove(highWaterMark + 1)) {
+				highWaterMark++;
+			}
 		}
 
-		rxHandler.accept(payload, this);
+		// Deliver actual data (without sequence number)
+		byte[] actualData = new byte[payload.length - 8];
+		payloadBuffer.get(actualData);
+		rxHandler.accept(actualData, this);
 	}
 }
