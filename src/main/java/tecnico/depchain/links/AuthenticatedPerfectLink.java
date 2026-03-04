@@ -24,11 +24,11 @@ public class AuthenticatedPerfectLink extends P2PLink {
 	private long highWaterMark = -1;
 	private Set<Long> outOfOrder = new HashSet<>();
 
-	public AuthenticatedPerfectLink(InetSocketAddress remote, SecretKey ownKey, PublicKey remoteKey)
+	public AuthenticatedPerfectLink(InetSocketAddress local, InetSocketAddress remote, SecretKey ownKey, PublicKey remoteKey)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException {
-		super(remote);
+		super(local, remote);
 
-		lower = new StubbornLink(remote);
+		lower = new StubbornLink(local, remote);
 		lower.rxHandler = this::internalRxHandler;
 
 		outgoing_mac = Mac.getInstance("HmacSHA256");

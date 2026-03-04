@@ -4,10 +4,13 @@ import java.net.InetSocketAddress;
 import java.util.function.BiConsumer;
 
 public abstract class P2PLink {
+	public InetSocketAddress local;
 	public InetSocketAddress remote;
 
-	public P2PLink(InetSocketAddress remote) {
+	public P2PLink(InetSocketAddress local, InetSocketAddress remote) {
+		assert local != null;
 		assert remote != null;
+		this.local = local;
 		this.remote = remote;
 	}
 

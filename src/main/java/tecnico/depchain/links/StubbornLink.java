@@ -21,10 +21,10 @@ public class StubbornLink extends P2PLink implements Runnable {
 	private NavigableMap<Long, byte[]> pendingMsgs = new TreeMap<>();
 	private Thread stubbornThread;
 
-	public StubbornLink(InetSocketAddress remote) throws SocketException {
-		super(remote);
+	public StubbornLink(InetSocketAddress local, InetSocketAddress remote) throws SocketException {
+		super(local, remote);
 
-		lower = new FairLossLink(remote);
+		lower = new FairLossLink(local, remote);
 		lower.rxHandler = this::internalRxHandler;
 
 		// Start stubborn thread

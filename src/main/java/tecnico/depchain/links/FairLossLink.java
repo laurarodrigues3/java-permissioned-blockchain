@@ -10,10 +10,10 @@ public class FairLossLink extends P2PLink implements Runnable {
 	private DatagramSocket sock;
 	private Thread receiverThread;
 
-	public FairLossLink(InetSocketAddress remote) throws SocketException {
-		super(remote);
+	public FairLossLink(InetSocketAddress local, InetSocketAddress remote) throws SocketException {
+		super(local, remote);
 
-		sock = new DatagramSocket(remote); // FIXME: Never closed
+		sock = new DatagramSocket(local); // FIXME: Never closed
 
 		// Start receiver thread
 		receiverThread = new Thread(this);
