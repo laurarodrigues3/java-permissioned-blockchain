@@ -50,7 +50,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 		byte[] selected_msg = null;
 
 		// 'Cursor' for round robin resend
-		Long lastProcessed = Long.valueOf(0);
+		Long lastProcessed = Long.valueOf(-1);
 
 		// Transmit messages until the internal RX handler finds their respective ACKs
 		while (true) {
@@ -66,7 +66,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 				var entry = pendingMsgs.higherEntry(lastProcessed);
 				if (entry == null) {
 					// Reset cursor once end is reached
-					lastProcessed = Long.valueOf(0);
+					lastProcessed = Long.valueOf(-1);
 					continue;
 				}
 				lastProcessed = entry.getKey();
