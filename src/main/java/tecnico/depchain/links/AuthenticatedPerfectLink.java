@@ -24,7 +24,9 @@ public class AuthenticatedPerfectLink extends P2PLink {
 	private long highWaterMark = -1;
 	private Set<Long> outOfOrder = new HashSet<>();
 
-	public AuthenticatedPerfectLink(BiConsumer<byte[], P2PLink> rxHandler, InetSocketAddress local, InetSocketAddress remote, SecretKey ownKey, SecretKey remoteKey)
+	public AuthenticatedPerfectLink(
+			BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local, InetSocketAddress remote,
+			SecretKey ownKey, SecretKey remoteKey)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException {
 		super(rxHandler);
 
@@ -60,7 +62,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 	}
 
 	// Handler for lower receive
-	private void internalRxHandler(byte[] bytes, P2PLink _unused) {
+	private void internalRxHandler(byte[] bytes, InetSocketAddress remote) {
 		// Ignore too small to contain MAC + sequence number
 		// Prevents crash on malformed messages (by byzantine nodes)
 		if (bytes.length < 32 + 8)
@@ -99,6 +101,6 @@ public class AuthenticatedPerfectLink extends P2PLink {
 		// Deliver actual data (without sequence number)
 		byte[] actualData = new byte[payload.length - 8];
 		payloadBuffer.get(actualData);
-		rxHandler.accept(actualData, this);
+		rxHandler.accept(actualData, remote);
 	}
 }

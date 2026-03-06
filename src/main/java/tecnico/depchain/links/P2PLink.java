@@ -1,12 +1,12 @@
 package tecnico.depchain.links;
 
+import java.net.InetSocketAddress;
 import java.util.function.BiConsumer;
 
 public abstract class P2PLink {
-	protected BiConsumer<byte[], P2PLink> rxHandler;
+	protected BiConsumer<byte[], InetSocketAddress> rxHandler;
 
-	public P2PLink(BiConsumer<byte[], P2PLink> rxHandler)
-	{
+	public P2PLink(BiConsumer<byte[], InetSocketAddress> rxHandler) {
 		this.rxHandler = rxHandler;
 	}
 

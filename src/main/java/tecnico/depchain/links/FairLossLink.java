@@ -12,7 +12,8 @@ public class FairLossLink extends P2PLink implements Runnable {
 	private Thread receiverThread;
 	private InetSocketAddress remote;
 
-	public FairLossLink(BiConsumer<byte[], P2PLink> rxHandler, InetSocketAddress local, InetSocketAddress remote) throws SocketException {
+	public FairLossLink(BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local,
+			InetSocketAddress remote) throws SocketException {
 		super(rxHandler);
 
 		this.remote = remote;
@@ -49,7 +50,7 @@ public class FairLossLink extends P2PLink implements Runnable {
 			if (rxHandler != null) {
 				byte[] received = new byte[packet.getLength()];
 				System.arraycopy(rxBuffer, 0, received, 0, packet.getLength());
-				rxHandler.accept(received, this);
+				rxHandler.accept(received, remote);
 			}
 		}
 	}

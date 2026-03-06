@@ -22,7 +22,8 @@ public class StubbornLink extends P2PLink implements Runnable {
 	private NavigableMap<Long, byte[]> pendingMsgs = new TreeMap<>();
 	private Thread stubbornThread;
 
-	public StubbornLink(BiConsumer<byte[], P2PLink> rxHandler, InetSocketAddress local, InetSocketAddress remote) throws SocketException {
+	public StubbornLink(BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local,
+			InetSocketAddress remote) throws SocketException {
 		super(rxHandler);
 
 		lower = new FairLossLink(this::internalRxHandler, local, remote);
@@ -79,7 +80,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 	}
 
 	// Handler for lower receive
-	private void internalRxHandler(byte[] bytes, P2PLink _unused) {
+	private void internalRxHandler(byte[] bytes, InetSocketAddress remote) {
 		// Ignore messages too small to contain ID
 		// Prevents crash on malformed messages (by bizantine nodes)
 		if (bytes.length < 8)
@@ -98,7 +99,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 		lower.Transmit(ack);
 
 		// Deliver message
-		rxHandler.accept(msg.payload, this);
+		rxHandler.accept(msg.payload, remote);
 	}
 
 	private void handleACK(byte[] bytes) {
