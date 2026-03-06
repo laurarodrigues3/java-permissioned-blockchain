@@ -18,16 +18,14 @@ public class FairLossLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 16001);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 16002);
 
-		FairLossLink linkA = new FairLossLink(addrA, addrB);
-		FairLossLink linkB = new FairLossLink(addrB, addrA);
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		linkB.SetHandler((data, link) -> {
+		FairLossLink linkA = new FairLossLink((data, remote) -> {}, addrA, addrB);
+		FairLossLink linkB = new FairLossLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		});
+		}, addrB, addrA);
 
 		byte[] message = "Hello from A".getBytes();
 		linkA.Transmit(message);
@@ -41,15 +39,13 @@ public class FairLossLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 16003);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 16004);
 
-		FairLossLink linkA = new FairLossLink(addrA, addrB);
-		FairLossLink linkB = new FairLossLink(addrB, addrA);
-
 		int messageCount = 5;
 		CountDownLatch latch = new CountDownLatch(messageCount);
 
-		linkB.SetHandler((data, link) -> {
+		FairLossLink linkA = new FairLossLink((data, remote) -> {}, addrA, addrB);
+		FairLossLink linkB = new FairLossLink((data, remote) -> {
 			latch.countDown();
-		});
+		}, addrB, addrA);
 
 		for (int i = 0; i < messageCount; i++) {
 			linkA.Transmit(("Message " + i).getBytes());
@@ -63,22 +59,19 @@ public class FairLossLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 16005);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 16006);
 
-		FairLossLink linkA = new FairLossLink(addrA, addrB);
-		FairLossLink linkB = new FairLossLink(addrB, addrA);
-
 		CountDownLatch latchA = new CountDownLatch(1);
 		CountDownLatch latchB = new CountDownLatch(1);
 		AtomicReference<byte[]> receivedByA = new AtomicReference<>();
 		AtomicReference<byte[]> receivedByB = new AtomicReference<>();
 
-		linkA.SetHandler((data, link) -> {
+		FairLossLink linkA = new FairLossLink((data, remote) -> {
 			receivedByA.set(data);
 			latchA.countDown();
-		});
-		linkB.SetHandler((data, link) -> {
+		}, addrA, addrB);
+		FairLossLink linkB = new FairLossLink((data, remote) -> {
 			receivedByB.set(data);
 			latchB.countDown();
-		});
+		}, addrB, addrA);
 
 		linkA.Transmit("A to B".getBytes());
 		linkB.Transmit("B to A".getBytes());
@@ -94,19 +87,17 @@ public class FairLossLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 16007);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 16008);
 
-		FairLossLink linkA = new FairLossLink(addrA, addrB);
-		FairLossLink linkB = new FairLossLink(addrB, addrA);
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		// Send binary data (not just text)
-		byte[] binaryData = new byte[] { 0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE, 0x7F };
-
-		linkB.SetHandler((data, link) -> {
+		FairLossLink linkA = new FairLossLink((data, remote) -> {}, addrA, addrB);
+		FairLossLink linkB = new FairLossLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		});
+		}, addrB, addrA);
+
+		// Send binary data (not just text)
+		byte[] binaryData = new byte[] { 0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE, 0x7F };
 
 		linkA.Transmit(binaryData);
 

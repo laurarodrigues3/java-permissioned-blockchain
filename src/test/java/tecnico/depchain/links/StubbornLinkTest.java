@@ -23,16 +23,14 @@ public class StubbornLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 17001);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 17002);
 
-		StubbornLink linkA = new StubbornLink(addrA, addrB);
-		StubbornLink linkB = new StubbornLink(addrB, addrA);
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		linkB.SetHandler((data, link) -> {
+		StubbornLink linkA = new StubbornLink(null, addrA, addrB);
+		StubbornLink linkB = new StubbornLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		});
+		}, addrB, addrA);
 
 		byte[] message = "Stubborn hello".getBytes();
 		linkA.Transmit(message);
@@ -46,17 +44,15 @@ public class StubbornLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 17003);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 17004);
 
-		StubbornLink linkA = new StubbornLink(addrA, addrB);
-		StubbornLink linkB = new StubbornLink(addrB, addrA);
-
 		int messageCount = 3;
 		CountDownLatch latch = new CountDownLatch(messageCount);
 		Set<String> receivedMessages = ConcurrentHashMap.newKeySet();
 
-		linkB.SetHandler((data, link) -> {
+		StubbornLink linkA = new StubbornLink((data, remote) -> {}, addrA, addrB);
+		StubbornLink linkB = new StubbornLink((data, remote) -> {
 			receivedMessages.add(new String(data));
 			latch.countDown();
-		});
+		}, addrB, addrA);
 
 		for (int i = 0; i < messageCount; i++) {
 			linkA.Transmit(("Message " + i).getBytes());
@@ -75,22 +71,19 @@ public class StubbornLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 17005);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 17006);
 
-		StubbornLink linkA = new StubbornLink(addrA, addrB);
-		StubbornLink linkB = new StubbornLink(addrB, addrA);
-
 		CountDownLatch latchA = new CountDownLatch(1);
 		CountDownLatch latchB = new CountDownLatch(1);
 		AtomicReference<byte[]> receivedByA = new AtomicReference<>();
 		AtomicReference<byte[]> receivedByB = new AtomicReference<>();
 
-		linkA.SetHandler((data, link) -> {
+		StubbornLink linkA = new StubbornLink((data, remote) -> {
 			receivedByA.set(data);
 			latchA.countDown();
-		});
-		linkB.SetHandler((data, link) -> {
+		}, addrA, addrB);
+		StubbornLink linkB = new StubbornLink((data, remote) -> {
 			receivedByB.set(data);
 			latchB.countDown();
-		});
+		}, addrB, addrA);
 
 		linkA.Transmit("From A".getBytes());
 		linkB.Transmit("From B".getBytes());
@@ -106,7 +99,7 @@ public class StubbornLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 17007);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 17008);
 
-		StubbornLink linkA = new StubbornLink(addrA, addrB);
+		StubbornLink linkA = new StubbornLink((data, remote) -> {}, addrA, addrB);
 
 		assertThrows(IllegalArgumentException.class, () -> {
 			linkA.Transmit(new byte[0]);
@@ -122,7 +115,7 @@ public class StubbornLinkTest {
 		DatagramSocket rawB = new DatagramSocket(new InetSocketAddress(HOST, 17010));
 		rawB.setSoTimeout(100);
 
-		StubbornLink linkA = new StubbornLink(addrA, addrB);
+		StubbornLink linkA = new StubbornLink((data, remote) -> {}, addrA, addrB);
 		linkA.Transmit("Retransmit me".getBytes());
 
 		// Phase 1: Collect retransmissions WITHOUT sending ACK

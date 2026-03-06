@@ -32,18 +32,16 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyA = generateKey();
 		SecretKey keyB = generateKey();
 
-		// A sends with keyA, verifies incoming with keyB
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyA, keyB);
-		// B sends with keyB, verifies incoming with keyA
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyB, keyA);
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		linkB.SetHandler((data, link) -> {
+		// A sends with keyA, verifies incoming with keyB
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyA, keyB);
+		// B sends with keyB, verifies incoming with keyA
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		});
+		}, addrB, addrA, keyB, keyA);
 
 		byte[] message = "Hello authenticated world".getBytes();
 		linkA.Transmit(message);
@@ -60,17 +58,16 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyA = generateKey();
 		SecretKey keyB = generateKey();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyA, keyB);
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyB, keyA);
-
 		int messageCount = 5;
 		CountDownLatch latch = new CountDownLatch(messageCount);
 		java.util.Set<String> receivedMessages = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-		linkB.SetHandler((data, link) -> {
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyA, keyB);
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedMessages.add(new String(data));
 			latch.countDown();
-		});
+		}, addrB, addrA, keyB, keyA);
+
 
 		for (int i = 0; i < messageCount; i++) {
 			linkA.Transmit(("Msg " + i).getBytes());
@@ -92,22 +89,19 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyAtoB = generateKey();
 		SecretKey keyBtoA = generateKey();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyAtoB, keyBtoA);
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyBtoA, keyAtoB);
-
 		CountDownLatch latchA = new CountDownLatch(1);
 		CountDownLatch latchB = new CountDownLatch(1);
 		AtomicReference<byte[]> receivedByA = new AtomicReference<>();
 		AtomicReference<byte[]> receivedByB = new AtomicReference<>();
 
-		linkA.SetHandler((data, link) -> {
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedByA.set(data);
 			latchA.countDown();
-		});
-		linkB.SetHandler((data, link) -> {
+		}, addrA, addrB, keyAtoB, keyBtoA);
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedByB.set(data);
 			latchB.countDown();
-		});
+		}, addrB, addrA, keyBtoA, keyAtoB);
 
 		linkA.Transmit("A says hi".getBytes());
 		linkB.Transmit("B says hi".getBytes());
@@ -127,15 +121,13 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyBtoA = generateKey();
 		SecretKey wrongKey = generateKey(); // B uses wrong key to verify
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyAtoB, keyBtoA);
-		// B verifies with wrongKey instead of keyAtoB → should reject all from A
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyBtoA, wrongKey);
-
 		CountDownLatch latch = new CountDownLatch(1);
 
-		linkB.SetHandler((data, link) -> {
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
+		// B verifies with wrongKey instead of keyAtoB → should reject all from A
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			latch.countDown(); // Should NOT be called
-		});
+		}, addrB, addrA, keyBtoA, wrongKey);
 
 		linkA.Transmit("This should be rejected".getBytes());
 
@@ -152,16 +144,14 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyAtoB = generateKey();
 		SecretKey keyBtoA = generateKey();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyAtoB, keyBtoA);
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyBtoA, keyAtoB);
-
 		AtomicInteger deliveryCount = new AtomicInteger(0);
 		CountDownLatch firstDelivery = new CountDownLatch(1);
 
-		linkB.SetHandler((data, link) -> {
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			deliveryCount.incrementAndGet();
 			firstDelivery.countDown();
-		});
+		}, addrB, addrA, keyBtoA, keyAtoB);
 
 		// Send a single message — stubborn link will retransmit it multiple times
 		// but AuthenticatedPerfectLink should deliver it exactly once
@@ -184,22 +174,20 @@ public class AuthenticatedPerfectLinkTest {
 		SecretKey keyAtoB = generateKey();
 		SecretKey keyBtoA = generateKey();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink(addrA, addrB, keyAtoB, keyBtoA);
-		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink(addrB, addrA, keyBtoA, keyAtoB);
-
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
+
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
+		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
+			received.set(data);
+			latch.countDown();
+		}, addrB, addrA, keyBtoA, keyAtoB);
 
 		// Send binary data to ensure no corruption through the layers
 		byte[] binaryData = new byte[256];
 		for (int i = 0; i < 256; i++) {
 			binaryData[i] = (byte) i;
 		}
-
-		linkB.SetHandler((data, link) -> {
-			received.set(data);
-			latch.countDown();
-		});
 
 		linkA.Transmit(binaryData);
 
