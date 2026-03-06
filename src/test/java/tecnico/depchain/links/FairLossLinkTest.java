@@ -28,7 +28,7 @@ public class FairLossLinkTest {
 		}, addrB, addrA);
 
 		byte[] message = "Hello from A".getBytes();
-		linkA.Transmit(message);
+		linkA.transmit(message);
 
 		assertTrue(latch.await(2, TimeUnit.SECONDS), "Message should be received within timeout");
 		assertArrayEquals(message, received.get());
@@ -48,7 +48,7 @@ public class FairLossLinkTest {
 		}, addrB, addrA);
 
 		for (int i = 0; i < messageCount; i++) {
-			linkA.Transmit(("Message " + i).getBytes());
+			linkA.transmit(("Message " + i).getBytes());
 		}
 
 		assertTrue(latch.await(3, TimeUnit.SECONDS), "All messages should be received");
@@ -73,8 +73,8 @@ public class FairLossLinkTest {
 			latchB.countDown();
 		}, addrB, addrA);
 
-		linkA.Transmit("A to B".getBytes());
-		linkB.Transmit("B to A".getBytes());
+		linkA.transmit("A to B".getBytes());
+		linkB.transmit("B to A".getBytes());
 
 		assertTrue(latchB.await(2, TimeUnit.SECONDS), "B should receive message from A");
 		assertTrue(latchA.await(2, TimeUnit.SECONDS), "A should receive message from B");
@@ -99,7 +99,7 @@ public class FairLossLinkTest {
 		// Send binary data (not just text)
 		byte[] binaryData = new byte[] { 0x00, 0x01, 0x02, (byte) 0xFF, (byte) 0xFE, 0x7F };
 
-		linkA.Transmit(binaryData);
+		linkA.transmit(binaryData);
 
 		assertTrue(latch.await(2, TimeUnit.SECONDS), "Binary message should be received");
 		assertArrayEquals(binaryData, received.get());

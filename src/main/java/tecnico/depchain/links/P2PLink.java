@@ -10,5 +10,5 @@ public abstract class P2PLink {
 		this.rxHandler = rxHandler;
 	}
 
-	public abstract void Transmit(byte[] data);
+	public abstract void transmit(byte[] data);
 }

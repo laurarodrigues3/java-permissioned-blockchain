@@ -34,7 +34,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 	}
 
 	@Override
-	public void Transmit(byte[] data) {
+	public void transmit(byte[] data) {
 		if (data.length == 0)
 			throw new IllegalArgumentException();
 
@@ -75,7 +75,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 			}
 
 			// Finally send the message
-			lower.Transmit(selected_msg);
+			lower.transmit(selected_msg);
 		}
 	}
 
@@ -96,7 +96,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 		// Transmit directly though fair loss link
 		// Allows multiple delivery but that's within stubborn spec
 		byte[] ack = makeACK(msg.id);
-		lower.Transmit(ack);
+		lower.transmit(ack);
 
 		// Deliver message
 		rxHandler.accept(msg.payload, remote);

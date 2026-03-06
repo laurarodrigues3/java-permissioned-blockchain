@@ -33,7 +33,7 @@ public class StubbornLinkTest {
 		}, addrB, addrA);
 
 		byte[] message = "Stubborn hello".getBytes();
-		linkA.Transmit(message);
+		linkA.transmit(message);
 
 		assertTrue(latch.await(5, TimeUnit.SECONDS), "Message should be delivered");
 		assertArrayEquals(message, received.get());
@@ -55,7 +55,7 @@ public class StubbornLinkTest {
 		}, addrB, addrA);
 
 		for (int i = 0; i < messageCount; i++) {
-			linkA.Transmit(("Message " + i).getBytes());
+			linkA.transmit(("Message " + i).getBytes());
 		}
 
 		assertTrue(latch.await(10, TimeUnit.SECONDS), "All messages should be delivered");
@@ -85,8 +85,8 @@ public class StubbornLinkTest {
 			latchB.countDown();
 		}, addrB, addrA);
 
-		linkA.Transmit("From A".getBytes());
-		linkB.Transmit("From B".getBytes());
+		linkA.transmit("From A".getBytes());
+		linkB.transmit("From B".getBytes());
 
 		assertTrue(latchB.await(5, TimeUnit.SECONDS), "B should receive from A");
 		assertTrue(latchA.await(5, TimeUnit.SECONDS), "A should receive from B");
@@ -102,7 +102,7 @@ public class StubbornLinkTest {
 		StubbornLink linkA = new StubbornLink((data, remote) -> {}, addrA, addrB);
 
 		assertThrows(IllegalArgumentException.class, () -> {
-			linkA.Transmit(new byte[0]);
+			linkA.transmit(new byte[0]);
 		});
 	}
 
@@ -116,7 +116,7 @@ public class StubbornLinkTest {
 		rawB.setSoTimeout(100);
 
 		StubbornLink linkA = new StubbornLink((data, remote) -> {}, addrA, addrB);
-		linkA.Transmit("Retransmit me".getBytes());
+		linkA.transmit("Retransmit me".getBytes());
 
 		// Phase 1: Collect retransmissions WITHOUT sending ACK
 		int retransmitCount = 0;

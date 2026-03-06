@@ -24,6 +24,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 	private long highWaterMark = -1;
 	private Set<Long> outOfOrder = new HashSet<>();
 
+	//TODO: MAC keys cannot be set in global knowledge (gen and send)
 	public AuthenticatedPerfectLink(
 			BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local, InetSocketAddress remote,
 			SecretKey ownKey, SecretKey remoteKey)
@@ -42,7 +43,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 			throw new RuntimeException("I fucked up");
 	}
 
-	public void Transmit(byte[] data) {
+	public void transmit(byte[] data) {
 		long seq = txSeqNum++;
 
 		// Prepend sequence number to payload
@@ -58,7 +59,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 		buffer.put(mac_bytes);
 		buffer.put(dataWithSeq);
 
-		lower.Transmit(buffer.array());
+		lower.transmit(buffer.array());
 	}
 
 	// Handler for lower receive

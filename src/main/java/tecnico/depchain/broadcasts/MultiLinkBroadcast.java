@@ -12,7 +12,7 @@ public abstract class MultiLinkBroadcast {
 		this.brdHandler = brdHandler;
 	}
 
-	public abstract void Transmit(int link, byte[] data);
+	public abstract void transmit(int link, byte[] data);
 
-	public abstract void Broadcast(byte[] data);
+	public abstract void broadcast(byte[] data);
 }

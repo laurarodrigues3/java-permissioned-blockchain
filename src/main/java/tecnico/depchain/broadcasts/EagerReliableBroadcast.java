@@ -28,13 +28,13 @@ public class EagerReliableBroadcast extends MultiLinkBroadcast {
 	}
 
 	@Override
-	public void Transmit(int link, byte[] data) throws IndexOutOfBoundsException {
-		lower.Transmit(link, data);
+	public void transmit(int link, byte[] data) throws IndexOutOfBoundsException {
+		lower.transmit(link, data);
 	}
 
 	@Override
-	public void Broadcast(byte[] data) {
-		lower.Broadcast(data);
+	public void broadcast(byte[] data) {
+		lower.broadcast(data);
 	}
 
 	private void rxHandler(byte[] data, InetSocketAddress remote) {
@@ -47,7 +47,7 @@ public class EagerReliableBroadcast extends MultiLinkBroadcast {
 		if (delivered.contains(digest))
 			return; // Ignore if already seen
 
-		lower.Broadcast(data);
+		lower.broadcast(data);
 		brdHandler.accept(data, remote);
 	}
 }

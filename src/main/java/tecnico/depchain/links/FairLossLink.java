@@ -25,7 +25,7 @@ public class FairLossLink extends P2PLink implements Runnable {
 		receiverThread.start();
 	}
 
-	public void Transmit(byte[] data) {
+	public void transmit(byte[] data) {
 		var packet = new DatagramPacket(data, data.length, remote);
 		try {
 			sock.send(packet);

@@ -44,7 +44,7 @@ public class AuthenticatedPerfectLinkTest {
 		}, addrB, addrA, keyB, keyA);
 
 		byte[] message = "Hello authenticated world".getBytes();
-		linkA.Transmit(message);
+		linkA.transmit(message);
 
 		assertTrue(latch.await(5, TimeUnit.SECONDS), "Message should be delivered");
 		assertArrayEquals(message, received.get());
@@ -70,7 +70,7 @@ public class AuthenticatedPerfectLinkTest {
 
 
 		for (int i = 0; i < messageCount; i++) {
-			linkA.Transmit(("Msg " + i).getBytes());
+			linkA.transmit(("Msg " + i).getBytes());
 		}
 
 		assertTrue(latch.await(10, TimeUnit.SECONDS), "All messages should be delivered");
@@ -103,8 +103,8 @@ public class AuthenticatedPerfectLinkTest {
 			latchB.countDown();
 		}, addrB, addrA, keyBtoA, keyAtoB);
 
-		linkA.Transmit("A says hi".getBytes());
-		linkB.Transmit("B says hi".getBytes());
+		linkA.transmit("A says hi".getBytes());
+		linkB.transmit("B says hi".getBytes());
 
 		assertTrue(latchB.await(5, TimeUnit.SECONDS), "B should receive from A");
 		assertTrue(latchA.await(5, TimeUnit.SECONDS), "A should receive from B");
@@ -129,7 +129,7 @@ public class AuthenticatedPerfectLinkTest {
 			latch.countDown(); // Should NOT be called
 		}, addrB, addrA, keyBtoA, wrongKey);
 
-		linkA.Transmit("This should be rejected".getBytes());
+		linkA.transmit("This should be rejected".getBytes());
 
 		// Wait a bit and verify nothing was delivered
 		assertFalse(latch.await(3, TimeUnit.SECONDS),
@@ -155,7 +155,7 @@ public class AuthenticatedPerfectLinkTest {
 
 		// Send a single message — stubborn link will retransmit it multiple times
 		// but AuthenticatedPerfectLink should deliver it exactly once
-		linkA.Transmit("Deliver me once".getBytes());
+		linkA.transmit("Deliver me once".getBytes());
 
 		assertTrue(firstDelivery.await(5, TimeUnit.SECONDS), "Message should be delivered");
 
@@ -189,7 +189,7 @@ public class AuthenticatedPerfectLinkTest {
 			binaryData[i] = (byte) i;
 		}
 
-		linkA.Transmit(binaryData);
+		linkA.transmit(binaryData);
 
 		assertTrue(latch.await(5, TimeUnit.SECONDS), "Binary message should be delivered");
 		assertArrayEquals(binaryData, received.get(),

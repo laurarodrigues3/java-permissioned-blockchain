@@ -34,24 +34,24 @@ public class BestEffortBroadcast extends MultiLinkBroadcast {
 	}
 
 	@Override
-	public void Transmit(int link, byte[] data) throws IndexOutOfBoundsException {
+	public void transmit(int link, byte[] data) throws IndexOutOfBoundsException {
 		// Prepend message type
 		byte[] msg = new byte[1 + data.length];
 		msg[0] = P2P_PREFIX;
 		System.arraycopy(data, 0, msg, 1, data.length);
 
-		links.get(link).Transmit(msg);
+		links.get(link).transmit(msg);
 	}
 
 	@Override
-	public void Broadcast(byte[] data) {
+	public void broadcast(byte[] data) {
 		// Prepend message type
 		byte[] msg = new byte[1 + data.length];
 		msg[0] = BROADCAST_PREFIX;
 		System.arraycopy(data, 0, msg, 1, data.length);
 
 		links.forEach((P2PLink link) -> {
-			link.Transmit(msg);
+			link.transmit(msg);
 		});
 	}
 
