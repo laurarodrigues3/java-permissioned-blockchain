@@ -17,8 +17,8 @@ public class DepchainUtils {
 		}
 	}
 
-	public static Long longDigest(byte[] data)
-	{
+	//64-bit digest (truncation of MD5)
+	public static Long longDigest(byte[] data) {
 		byte[] digest = null;
 		try {
 			digest = MessageDigest.getInstance("MD5").digest(data);
@@ -35,5 +35,14 @@ public class DepchainUtils {
 			digest[5] << 40 |
 			digest[6] << 48 |
 			digest[7] << 56;
+	}
+
+	public static byte[] sha256(byte[] data) {
+		try {
+			return MessageDigest.getInstance("SHA-256").digest(data);
+		}
+		catch (NoSuchAlgorithmException e) {
+			return new byte[32]; //Won't happen
+		}
 	}
 }
