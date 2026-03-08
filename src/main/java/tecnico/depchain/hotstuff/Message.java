@@ -10,6 +10,7 @@ import java.io.Serializable;
 public class Message implements Serializable {
 	private MsgType type;
 	private int viewNumber;
+	private int senderId;
 	private TreeNode node;
 	private QuorumCertificate justify;
 
@@ -21,22 +22,17 @@ public class Message implements Serializable {
 		DECIDE,
 	}
 
-	public Message(MsgType type, int viewNumber, TreeNode node) {
+	public Message(MsgType type, int viewNumber, int senderId, TreeNode node, QuorumCertificate justify) {
 		this.type = type;
 		this.viewNumber = viewNumber;
-		this.node = node;
-		this.justify = null;
-	}
-
-	public Message(MsgType type, int viewNumber, TreeNode node, QuorumCertificate justify) {
-		this.type = type;
-		this.viewNumber = viewNumber;
+		this.senderId = senderId;
 		this.node = node;
 		this.justify = justify;
 	}
 
 	public MsgType getType() { return type; }
 	public int getViewNumber() { return viewNumber; }
+	public int getSenderId() { return senderId; }
 	public TreeNode getTreeNode() { return node; }
 	public QuorumCertificate getJustify() { return justify; }
 

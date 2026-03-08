@@ -19,12 +19,12 @@ public class EagerReliableBroadcast extends MultiLinkBroadcast {
 
 	public EagerReliableBroadcast(
 			BiConsumer<byte[], InetSocketAddress> rxHandler, BiConsumer<byte[], InetSocketAddress> brdHandler,
-			InetSocketAddress local, SecretKey ownKey,
+			List<InetSocketAddress> locals, SecretKey ownKey,
 			List<InetSocketAddress> remotes, List<SecretKey> remoteKeys)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		super(rxHandler, brdHandler);
 
-		lower = new BestEffortBroadcast(this::rxHandler, this::brdHandler, local, ownKey, remotes, remoteKeys);
+		lower = new BestEffortBroadcast(this::rxHandler, this::brdHandler, locals, ownKey, remotes, remoteKeys);
 	}
 
 	@Override

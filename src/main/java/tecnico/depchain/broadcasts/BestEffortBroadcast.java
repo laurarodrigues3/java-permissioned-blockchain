@@ -18,19 +18,26 @@ public class BestEffortBroadcast extends MultiLinkBroadcast {
 	private static final byte P2P_PREFIX = 0;
 	private static final byte BROADCAST_PREFIX = 1;
 
+	/**
+	 * Each link needs its own local address (unique port) since FairLossLink
+	 * binds a dedicated DatagramSocket per link.
+	 * 
+	 * @param locals  List of local addresses, one per remote peer
+	 * @param remotes List of remote addresses
+	 */
 	public BestEffortBroadcast(
 			BiConsumer<byte[], InetSocketAddress> rxHandler, BiConsumer<byte[], InetSocketAddress> brdHandler,
-			InetSocketAddress local, SecretKey ownKey,
+			List<InetSocketAddress> locals, SecretKey ownKey,
 			List<InetSocketAddress> remotes, List<SecretKey> remoteKeys)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		super(rxHandler, brdHandler);
 
-		if (remotes.size() != remoteKeys.size())
+		if (remotes.size() != remoteKeys.size() || locals.size() != remotes.size())
 			throw new IllegalArgumentException();
 
 		links = new ArrayList<P2PLink>(remotes.size());
 		for (int i = 0; i < remotes.size(); ++i)
-			links.add(new AuthenticatedPerfectLink(this::rxHandlerFunc, local, remotes.get(i), ownKey, remoteKeys.get(i)));
+			links.add(new AuthenticatedPerfectLink(this::rxHandlerFunc, locals.get(i), remotes.get(i), ownKey, remoteKeys.get(i)));
 	}
 
 	@Override
