@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import javax.crypto.SecretKey;
@@ -25,12 +26,12 @@ public class HotStuff {
 	private final BestEffortBroadcast broadcast;
 
 	// Protocol state (Algorithm 2)
-	private int currentView = 1;
-	private QuorumCertificate prepareQC = null;  // highest QC voted pre-commit
-	private QuorumCertificate lockedQC = null;    // lock for safety
+	private volatile int currentView = 1;
+	private QuorumCertificate prepareQC = null;
+	private QuorumCertificate lockedQC = null;
 
 	// Tree of proposals
-	private final Map<String, TreeNode> nodeStore = new HashMap<>(); // hash(hex) -> node
+	private final Map<String, TreeNode> nodeStore = new HashMap<>();
 
 	// Decided commands (the "blockchain")
 	private final List<String> decidedCommands = new ArrayList<>();
@@ -40,7 +41,6 @@ public class HotStuff {
 
 	// Message queue for sequential processing
 	private final BlockingQueue<Message> messageQueue = new LinkedBlockingQueue<>();
-	// Buffer for out-of-order messages (e.g., from the future)
 	private final List<Message> outOfOrderBuffer = new ArrayList<>();
 
 	// Callback for decided commands
@@ -50,37 +50,39 @@ public class HotStuff {
 	private Thread protocolThread;
 	private volatile boolean running = false;
 
+	// --- View timeout / Pacemaker (Step 4) ---
+	private static final long DEFAULT_TIMEOUT_MS = 5000;
+	private static final long MAX_TIMEOUT_MS = 60000;
+	private long baseTimeoutMs = DEFAULT_TIMEOUT_MS;
+	private long viewTimeoutMs = DEFAULT_TIMEOUT_MS;
+	private long viewDeadline;
+
 	/**
-	 * @param replicaID  This replica's ID (0-indexed)
-	 * @param basePort   Base port for the system. Replica r uses ports [basePort + r*n .. basePort + r*n + n-2]
-	 * @param host       Host address for all replicas (e.g., "127.0.0.1")
+	 * @param replicaID   This replica's ID (0-indexed)
+	 * @param basePort    Base port for the system
+	 * @param host        Host address for all replicas
 	 * @param numReplicas Total number of replicas
-	 * @param keys       List of n shared keys (index i = shared key with replica i)
+	 * @param keys        List of n shared keys (index i = shared key with replica i)
 	 */
 	public HotStuff(
-			int replicaID, String host, int basePort, int numReplicas, List<SecretKey> keys
-		) throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+			int replicaID, String host, int basePort, int numReplicas, List<SecretKey> keys)
+			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		this.replicaID = replicaID;
 		this.numReplicas = numReplicas;
-		// f = (n-1)/3, quorum = n - f
 		int f = (numReplicas - 1) / 3;
 		this.quorumSize = numReplicas - f;
 
-		// Build per-link local and remote addresses
-		// Port scheme: port(sender, receiver) = basePort + receiver * n + linkIndex(sender, receiver)
-		// where linkIndex(s, r) = s < r ? s : s - 1
 		List<InetSocketAddress> locals = new ArrayList<>();
 		List<InetSocketAddress> remotes = new ArrayList<>();
 		List<SecretKey> peerKeys = new ArrayList<>();
 
 		for (int j = 0; j < numReplicas; j++) {
-			if (j == replicaID) continue;
+			if (j == replicaID)
+				continue;
 
-			// Local port: the port where this replica (replicaID) listens for messages from replica j
 			int localPort = basePort + replicaID * numReplicas + (j < replicaID ? j : j - 1);
 			locals.add(new InetSocketAddress(host, localPort));
 
-			// Remote port: the port where replica j listens for messages from this replica (replicaID)
 			int remotePort = basePort + j * numReplicas + (replicaID < j ? replicaID : replicaID - 1);
 			remotes.add(new InetSocketAddress(host, remotePort));
 
@@ -102,8 +104,11 @@ public class HotStuff {
 
 	public void stop() {
 		running = false;
-		if (protocolThread != null)
+		if (protocolThread != null) {
 			protocolThread.interrupt();
+			try { protocolThread.join(3000); } catch (InterruptedException ignored) {}
+		}
+		broadcast.close();
 	}
 
 	public void propose(String command) {
@@ -118,14 +123,18 @@ public class HotStuff {
 		this.onDecide = callback;
 	}
 
+	public int getCurrentView() {
+		return currentView;
+	}
+
+	public void setBaseTimeout(long timeoutMs) {
+		this.baseTimeoutMs = timeoutMs;
+		this.viewTimeoutMs = timeoutMs;
+	}
+
 	// --- Network layer ---
 
-	/**
-	 * Called by BestEffortBroadcast when a message arrives.
-	 * Data has a 1-byte prefix from BEB (P2P=0, BROADCAST=1).
-	 */
 	private void handleMsg(byte[] data, InetSocketAddress remote) {
-		// Strip the 1-byte BEB prefix
 		byte[] msgBytes = new byte[data.length - 1];
 		System.arraycopy(data, 1, msgBytes, 0, msgBytes.length);
 
@@ -137,11 +146,9 @@ public class HotStuff {
 
 	private void sendMessage(int replica, Message msg) {
 		if (replica == replicaID) {
-			// Self-send: enqueue directly
 			messageQueue.offer(msg);
 			return;
 		}
-		// Adjust index: broadcast's internal list excludes our own address
 		int link = replica > replicaID ? replica - 1 : replica;
 		broadcast.transmit(link, msg.serialize());
 	}
@@ -150,8 +157,22 @@ public class HotStuff {
 		broadcast.broadcast(msg.serialize());
 	}
 
+	// --- Timeout helpers ---
+
+	private void startViewTimer() {
+		viewDeadline = System.currentTimeMillis() + viewTimeoutMs;
+	}
+
+	private long remainingMs() {
+		return Math.max(0, viewDeadline - System.currentTimeMillis());
+	}
+
 	// --- Protocol helpers ---
 
+	/**
+	 * Pull a message of the given type and view from the queue.
+	 * Returns null if the view deadline expires before a matching message arrives.
+	 */
 	private Message pullMessage(MsgType type, int viewNumber) throws InterruptedException {
 		for (int i = 0; i < outOfOrderBuffer.size(); i++) {
 			Message msg = outOfOrderBuffer.get(i);
@@ -160,7 +181,14 @@ public class HotStuff {
 			}
 		}
 		while (true) {
-			Message msg = messageQueue.take();
+			long remaining = remainingMs();
+			if (remaining <= 0)
+				return null;
+
+			Message msg = messageQueue.poll(remaining, TimeUnit.MILLISECONDS);
+			if (msg == null)
+				return null;
+
 			if (msg.getType() == type && msg.getViewNumber() == viewNumber) {
 				return msg;
 			}
@@ -184,17 +212,12 @@ public class HotStuff {
 
 	/**
 	 * safeNode predicate (Algorithm 1, lines 25-27).
-	 * Returns true if node is safe to accept:
-	 *   - Safety rule: node extends from lockedQC.node
-	 *   - Liveness rule: qc.viewNumber > lockedQC.viewNumber
 	 */
 	private boolean safeNode(TreeNode node, QuorumCertificate qc) {
-		if (lockedQC == null) return true;
+		if (lockedQC == null)
+			return true;
 
-		// Safety rule: the proposed node extends the locked branch
 		boolean extendsLocked = node.extendsFrom(lockedQC.getNode());
-
-		// Liveness rule: the justification has a higher view than our lock
 		boolean higherView = qc != null && qc.getViewNumber() > lockedQC.getViewNumber();
 
 		return extendsLocked || higherView;
@@ -210,11 +233,9 @@ public class HotStuff {
 		nodeStore.put(hashHex(node.getHash()), node);
 	}
 
-	/**
-	 * Link a deserialized node to its in-memory parent (if we have it).
-	 */
 	private void linkParent(TreeNode node) {
-		if (node == null) return;
+		if (node == null)
+			return;
 		TreeNode parent = nodeStore.get(hashHex(node.getParentHash()));
 		if (parent != null) {
 			node.setParent(parent);
@@ -223,44 +244,66 @@ public class HotStuff {
 
 	private static String hashHex(byte[] hash) {
 		StringBuilder sb = new StringBuilder();
-		for (byte b : hash) sb.append(String.format("%02x", b));
+		for (byte b : hash)
+			sb.append(String.format("%02x", b));
 		return sb.toString();
 	}
 
-	// --- Protocol main loop ---
+	// --- Protocol main loop (with timeout / nextView interrupt) ---
 
 	private void protocolLoop() {
 		while (running) {
+			startViewTimer();
+			boolean viewSucceeded = false;
+
 			try {
 				if (isLeader()) {
-					runLeaderPhase();
+					viewSucceeded = runLeaderPhase();
 				} else {
-					runReplicaPhase();
+					viewSucceeded = runReplicaPhase();
 				}
-				currentView++;
 			} catch (InterruptedException e) {
 				break;
+			} finally {
+				if (running) {
+					sendNewViewToNextLeader();
+
+					if (viewSucceeded) {
+						viewTimeoutMs = baseTimeoutMs;
+					} else {
+						viewTimeoutMs = Math.min(viewTimeoutMs * 2, MAX_TIMEOUT_MS);
+					}
+					currentView++;
+				}
 			}
 		}
 	}
 
-	private void runLeaderPhase() throws InterruptedException {
+	/**
+	 * Send NEW_VIEW carrying our highest prepareQC to the next view's leader.
+	 * Called on both successful completion and timeout (Algorithm 2, line 36).
+	 */
+	private void sendNewViewToNextLeader() {
+		int nextLeader = getLeader(currentView + 1);
+		sendMessage(nextLeader, makeMsg(MsgType.NEW_VIEW, null, prepareQC));
+	}
+
+	/** @return true if the view completed successfully, false on timeout */
+	private boolean runLeaderPhase() throws InterruptedException {
 		// === PREPARE phase (leader) ===
-		// Collect (n-f) NEW_VIEW messages (or bootstrap for view 1)
 		QuorumCertificate highQC = null;
 
 		if (currentView == 1) {
-			// Bootstrap: no NEW_VIEW messages needed, highQC is null
+			// Bootstrap: no NEW_VIEW messages needed
 		} else {
-			// Wait for (n-f) NEW_VIEW messages
 			Map<Integer, Message> newViews = new HashMap<>();
 
 			while (newViews.size() < quorumSize) {
 				Message msg = pullMessage(MsgType.NEW_VIEW, currentView - 1);
+				if (msg == null) return false;
 				newViews.put(msg.getSenderId(), msg);
 			}
 
-			// Pick highest prepareQC among new-view messages
 			for (Message m : newViews.values()) {
 				QuorumCertificate qc = m.getJustify();
 				if (qc != null) {
@@ -272,23 +315,25 @@ public class HotStuff {
 
 		// Create new proposal
 		TreeNode parentNode = highQC != null ? highQC.getNode() : null;
-		if (parentNode != null) linkParent(parentNode);
+		if (parentNode != null)
+			linkParent(parentNode);
 
-		// Wait for a command to propose
 		String cmd = waitForCommand();
+		if (cmd == null) return false;
 
 		TreeNode proposal = createLeaf(parentNode, cmd);
 		broadcastMessage(makeMsg(MsgType.PREPARE, proposal, highQC));
 
-		// Also process our own PREPARE vote (leader is also a replica)
 		boolean selfVote = safeNode(proposal, highQC);
 
-		// === Collect PREPARE votes → form prepareQC ===
+		// === Collect PREPARE votes -> form prepareQC ===
 		QuorumCertificate newPrepareQC = new QuorumCertificate(MsgType.PREPARE, currentView, proposal);
-		if (selfVote) newPrepareQC.addVoter(replicaID);
+		if (selfVote)
+			newPrepareQC.addVoter(replicaID);
 
 		while (!newPrepareQC.hasQuorum(quorumSize)) {
 			Message msg = pullMessage(MsgType.PREPARE, currentView);
+			if (msg == null) return false;
 			newPrepareQC.addVoter(msg.getSenderId());
 		}
 
@@ -296,12 +341,12 @@ public class HotStuff {
 		prepareQC = newPrepareQC;
 		broadcastMessage(makeMsg(MsgType.PRE_COMMIT, null, prepareQC));
 
-		// Self vote for pre-commit
 		QuorumCertificate newPrecommitQC = new QuorumCertificate(MsgType.PRE_COMMIT, currentView, proposal);
 		newPrecommitQC.addVoter(replicaID);
 
 		while (!newPrecommitQC.hasQuorum(quorumSize)) {
 			Message msg = pullMessage(MsgType.PRE_COMMIT, currentView);
+			if (msg == null) return false;
 			newPrecommitQC.addVoter(msg.getSenderId());
 		}
 
@@ -309,32 +354,31 @@ public class HotStuff {
 		lockedQC = newPrecommitQC;
 		broadcastMessage(makeMsg(MsgType.COMMIT, null, newPrecommitQC));
 
-		// Self vote for commit
 		QuorumCertificate newCommitQC = new QuorumCertificate(MsgType.COMMIT, currentView, proposal);
 		newCommitQC.addVoter(replicaID);
 
 		while (!newCommitQC.hasQuorum(quorumSize)) {
 			Message msg = pullMessage(MsgType.COMMIT, currentView);
+			if (msg == null) return false;
 			newCommitQC.addVoter(msg.getSenderId());
 		}
 
 		// === DECIDE phase ===
 		broadcastMessage(makeMsg(MsgType.DECIDE, null, newCommitQC));
 		executeDecision(proposal);
-
-		// Send NEW_VIEW for next view
-		sendMessage(getLeader(currentView + 1), makeMsg(MsgType.NEW_VIEW, null, prepareQC));
+		return true;
 	}
 
-	private void runReplicaPhase() throws InterruptedException {
+	/** @return true if the view completed successfully, false on timeout */
+	private boolean runReplicaPhase() throws InterruptedException {
 		int leader = getLeader(currentView);
 
 		// === PREPARE phase (replica) ===
-		// Wait for PREPARE from leader
-		Message prepareMsg = waitForMessage(MsgType.PREPARE, currentView);
+		Message prepareMsg = pullMessage(MsgType.PREPARE, currentView);
+		if (prepareMsg == null) return false;
+
 		TreeNode proposal = prepareMsg.getTreeNode();
 
-		// Store and link the received node
 		if (proposal != null) {
 			storeNode(proposal);
 			linkParent(proposal);
@@ -342,25 +386,24 @@ public class HotStuff {
 
 		QuorumCertificate justifyQC = prepareMsg.getJustify();
 
-		// Link the justify QC node too
 		if (justifyQC != null && justifyQC.getNode() != null) {
 			storeNode(justifyQC.getNode());
 			linkParent(justifyQC.getNode());
-			// Also link proposal to justify node if it's the parent
-			if (proposal != null && justifyQC.getNode() != null) {
+			if (proposal != null) {
 				if (Arrays.equals(proposal.getParentHash(), justifyQC.getNode().getHash())) {
 					proposal.setParent(justifyQC.getNode());
 				}
 			}
 		}
 
-		// Check safeNode
 		if (proposal != null && safeNode(proposal, justifyQC)) {
 			sendMessage(leader, makeMsg(MsgType.PREPARE, proposal, null));
 		}
 
 		// === PRE-COMMIT phase (replica) ===
-		Message preCommitMsg = waitForMessage(MsgType.PRE_COMMIT, currentView);
+		Message preCommitMsg = pullMessage(MsgType.PRE_COMMIT, currentView);
+		if (preCommitMsg == null) return false;
+
 		QuorumCertificate rcvPrepareQC = preCommitMsg.getJustify();
 		if (rcvPrepareQC != null) {
 			prepareQC = rcvPrepareQC;
@@ -368,7 +411,9 @@ public class HotStuff {
 		sendMessage(leader, makeMsg(MsgType.PRE_COMMIT, proposal, null));
 
 		// === COMMIT phase (replica) ===
-		Message commitMsg = waitForMessage(MsgType.COMMIT, currentView);
+		Message commitMsg = pullMessage(MsgType.COMMIT, currentView);
+		if (commitMsg == null) return false;
+
 		QuorumCertificate rcvPrecommitQC = commitMsg.getJustify();
 		if (rcvPrecommitQC != null) {
 			lockedQC = rcvPrecommitQC;
@@ -376,35 +421,33 @@ public class HotStuff {
 		sendMessage(leader, makeMsg(MsgType.COMMIT, proposal, null));
 
 		// === DECIDE phase (replica) ===
-		Message decideMsg = waitForMessage(MsgType.DECIDE, currentView);
+		Message decideMsg = pullMessage(MsgType.DECIDE, currentView);
+		if (decideMsg == null) return false;
+
 		QuorumCertificate commitQC = decideMsg.getJustify();
 		if (commitQC != null && commitQC.getNode() != null) {
 			executeDecision(commitQC.getNode());
 		} else if (proposal != null) {
 			executeDecision(proposal);
 		}
-
-		// Send NEW_VIEW for next view
-		sendMessage(getLeader(currentView + 1), makeMsg(MsgType.NEW_VIEW, null, prepareQC));
+		return true;
 	}
 
 	/**
-	 * Wait for a specific message type and view from the queue.
-	 * Discards non-matching messages.
-	 */
-	private Message waitForMessage(MsgType type, int view) throws InterruptedException {
-		return pullMessage(type, view);
-	}
-
-	/**
-	 * Wait for a command to propose. Busy-waits with short sleeps.
+	 * Wait for a command to propose, respecting the view deadline.
+	 * Returns null if no command arrives before the view expires.
 	 */
 	private String waitForCommand() throws InterruptedException {
-		return pendingCommands.take();
+		long remaining = remainingMs();
+		if (remaining <= 0)
+			return null;
+
+		return pendingCommands.poll(remaining, TimeUnit.MILLISECONDS);
 	}
 
 	private void executeDecision(TreeNode node) {
-		if (node == null) return;
+		if (node == null)
+			return;
 		String cmd = node.getCommand();
 		if (cmd != null && !decidedCommands.contains(cmd)) {
 			decidedCommands.add(cmd);

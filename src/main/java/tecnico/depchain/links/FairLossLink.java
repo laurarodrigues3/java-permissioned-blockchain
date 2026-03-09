@@ -11,6 +11,7 @@ public class FairLossLink extends P2PLink implements Runnable {
 	private DatagramSocket sock;
 	private Thread receiverThread;
 	private InetSocketAddress remote;
+	private volatile boolean running = true;
 
 	public FairLossLink(BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local,
 			InetSocketAddress remote) throws SocketException {
@@ -18,14 +19,17 @@ public class FairLossLink extends P2PLink implements Runnable {
 
 		this.remote = remote;
 
-		sock = new DatagramSocket(local); // FIXME: Never closed
+		sock = new DatagramSocket(null);
+		sock.setReuseAddress(true);
+		sock.bind(local);
 
-		// Start receiver thread
 		receiverThread = new Thread(this);
+		receiverThread.setDaemon(true);
 		receiverThread.start();
 	}
 
 	public void transmit(byte[] data) {
+		if (!running) return;
 		var packet = new DatagramPacket(data, data.length, remote);
 		try {
 			sock.send(packet);
@@ -34,24 +38,28 @@ public class FairLossLink extends P2PLink implements Runnable {
 		}
 	}
 
-	// Receiver thread
 	public void run() {
 		byte[] rxBuffer = new byte[64 * 1024];
 		DatagramPacket packet = new DatagramPacket(rxBuffer, rxBuffer.length);
-		while (true) {
+		while (running) {
 			packet.setLength(rxBuffer.length);
 			try {
 				sock.receive(packet);
 			} catch (IOException e) {
-				// Ignore
 				continue;
 			}
 
-			if (rxHandler != null) {
+			if (running && rxHandler != null) {
 				byte[] received = new byte[packet.getLength()];
 				System.arraycopy(rxBuffer, 0, received, 0, packet.getLength());
 				rxHandler.accept(received, remote);
 			}
 		}
+	}
+
+	@Override
+	public void close() {
+		running = false;
+		sock.close();
 	}
 }

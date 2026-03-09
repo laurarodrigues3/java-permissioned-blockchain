@@ -50,4 +50,9 @@ public class EagerReliableBroadcast extends MultiLinkBroadcast {
 		lower.broadcast(data);
 		brdHandler.accept(data, remote);
 	}
+
+	@Override
+	public void close() {
+		lower.close();
+	}
 }

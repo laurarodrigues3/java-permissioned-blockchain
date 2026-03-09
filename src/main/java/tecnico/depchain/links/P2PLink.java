@@ -11,4 +11,6 @@ public abstract class P2PLink {
 	}
 
 	public abstract void transmit(byte[] data);
+
+	public abstract void close();
 }

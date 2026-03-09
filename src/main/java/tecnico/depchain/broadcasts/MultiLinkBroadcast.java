@@ -15,4 +15,6 @@ public abstract class MultiLinkBroadcast {
 	public abstract void transmit(int link, byte[] data);
 
 	public abstract void broadcast(byte[] data);
+
+	public abstract void close();
 }

@@ -62,6 +62,13 @@ public class BestEffortBroadcast extends MultiLinkBroadcast {
 		});
 	}
 
+	@Override
+	public void close() {
+		for (P2PLink link : links) {
+			link.close();
+		}
+	}
+
 	private void rxHandlerFunc(byte[] data, InetSocketAddress remote) {
 		// Pop message type
 		byte type = data[0];

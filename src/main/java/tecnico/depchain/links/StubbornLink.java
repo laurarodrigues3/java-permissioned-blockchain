@@ -17,6 +17,7 @@ import tecnico.depchain.DepchainUtils;
 public class StubbornLink extends P2PLink implements Runnable {
 	private long txCounter = 0;
 	private FairLossLink lower;
+	private volatile boolean running = true;
 
 	// Stubborn message sending
 	private NavigableMap<Long, byte[]> pendingMsgs = new TreeMap<>();
@@ -30,6 +31,7 @@ public class StubbornLink extends P2PLink implements Runnable {
 
 		// Start stubborn thread
 		stubbornThread = new Thread(this);
+		stubbornThread.setDaemon(true);
 		stubbornThread.start();
 	}
 
@@ -49,12 +51,11 @@ public class StubbornLink extends P2PLink implements Runnable {
 	// Stubborn thread
 	public void run() {
 		byte[] selected_msg = null;
-
 		// 'Cursor' for round robin resend
 		Long lastProcessed = Long.valueOf(-1);
 
 		// Transmit messages until the internal RX handler finds their respective ACKs
-		while (true) {
+		while (running) {
 
 			// Get a pending message
 			synchronized (pendingMsgs) {
@@ -68,12 +69,12 @@ public class StubbornLink extends P2PLink implements Runnable {
 				if (entry == null) {
 					// Reset cursor once end is reached
 					lastProcessed = Long.valueOf(-1);
+					DepchainUtils.sleep(100);
 					continue;
 				}
 				lastProcessed = entry.getKey();
 				selected_msg = entry.getValue();
 			}
-
 			// Finally send the message
 			lower.transmit(selected_msg);
 		}
@@ -83,6 +84,8 @@ public class StubbornLink extends P2PLink implements Runnable {
 	private void internalRxHandler(byte[] bytes, InetSocketAddress remote) {
 		// Ignore messages too small to contain ID
 		// Prevents crash on malformed messages (by bizantine nodes)
+		if (!running) return;
+
 		if (bytes.length < 8)
 			return;
 
@@ -105,11 +108,17 @@ public class StubbornLink extends P2PLink implements Runnable {
 	private void handleACK(byte[] bytes) {
 		MessageWithID msg = deserializeMsg(bytes);
 
-		// Simply remove from pending queue
-		pendingMsgs.remove(msg.id);
+		synchronized (pendingMsgs) {
+			pendingMsgs.remove(msg.id);
+		}
 	}
 
-	// === Message building and utils ===
+	@Override
+	public void close() {
+		running = false;
+		lower.close();
+	}
+
 	private MessageWithID serializeMsg(byte[] payload) {
 		long id = txCounter++;
 

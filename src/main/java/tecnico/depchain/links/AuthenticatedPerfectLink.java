@@ -40,7 +40,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 
 		// Make sure MAC size is the expected
 		if (outgoing_mac.getMacLength() != 32)
-			throw new RuntimeException("I fucked up");
+			throw new RuntimeException("Unexpected MAC length: expected 32 bytes");
 	}
 
 	public void transmit(byte[] data) {
@@ -103,5 +103,10 @@ public class AuthenticatedPerfectLink extends P2PLink {
 		byte[] actualData = new byte[payload.length - 8];
 		payloadBuffer.get(actualData);
 		rxHandler.accept(actualData, remote);
+	}
+
+	@Override
+	public void close() {
+		lower.close();
 	}
 }
