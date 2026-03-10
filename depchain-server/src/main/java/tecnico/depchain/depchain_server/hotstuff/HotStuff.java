@@ -39,6 +39,7 @@ public class HotStuff {
 
 	// Decided commands (the "blockchain")
 	private final List<String> decidedCommands = new ArrayList<>();
+    private final List<String> newlyDecidedThisView = new ArrayList<>();
 
 	// Pending commands to propose (set by upper layer)
 	private final BlockingQueue<String> pendingCommands = new LinkedBlockingQueue<>();
@@ -49,6 +50,7 @@ public class HotStuff {
 
 	// Callback for decided commands
 	private Consumer<String> onDecide = null;
+	private final ConsensusUpcall upcall;
 
 	// Outgoing message filter for Byzantine testing (Step 5).
 	// Applied before every send/broadcast. Return null to drop the message.
@@ -74,12 +76,14 @@ public class HotStuff {
 	 * @param keys            List of n shared HMAC keys (index i = shared key with replica i)
 	 * @param crypto          CryptoService for Ed25519 signing/verification (Step 5)
 	 * @param thresholdCrypto ThresholdCrypto for threshold QC signatures (nullable)
+	 * @param upcall          Upcall for notifying the application layer on DECIDE completion
 	 */
 	public HotStuff(
 			int replicaID, String host, int basePort, int numReplicas,
-			List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
+			List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto, ConsensusUpcall upcall)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		this.replicaID = replicaID;
+		this.upcall = upcall;
 		this.numReplicas = numReplicas;
 		this.crypto = crypto;
 		this.thresholdCrypto = thresholdCrypto;
@@ -107,12 +111,20 @@ public class HotStuff {
 		broadcast = new BestEffortBroadcast(this::handleMsg, this::handleMsg, locals, ownKey, remotes, peerKeys);
 	}
 
+	/** Backward-compatible constructor (no upcall instance). */
+	public HotStuff(
+			int replicaID, String host, int basePort, int numReplicas,
+			List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
+			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+		this(replicaID, host, basePort, numReplicas, keys, crypto, thresholdCrypto, null);
+	}
+
 	/** Backward-compatible constructor (no threshold crypto). */
 	public HotStuff(
 			int replicaID, String host, int basePort, int numReplicas,
 			List<SecretKey> keys, CryptoService crypto)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		this(replicaID, host, basePort, numReplicas, keys, crypto, null);
+		this(replicaID, host, basePort, numReplicas, keys, crypto, null, null);
 	}
 
 	// --- Public interface ---
@@ -347,6 +359,7 @@ public class HotStuff {
 		while (running) {
 			startViewTimer();
 			boolean viewSucceeded = false;
+            newlyDecidedThisView.clear();
 
 			try {
 				if (isLeader()) {
@@ -367,6 +380,14 @@ public class HotStuff {
 					}
 					currentView++;
 					votedNodeThisView = null;
+
+                    // Trigger upcalls AFTER view transition!
+                    List<String> toUpcall = new ArrayList<>(newlyDecidedThisView);
+                    newlyDecidedThisView.clear();
+                    for (String cmd : toUpcall) {
+                        if (onDecide != null) onDecide.accept(cmd);
+                        if (upcall != null) upcall.onDecide(cmd);
+                    }
 				}
 			}
 		}
@@ -440,6 +461,7 @@ public class HotStuff {
 		while (!newPrepareQC.hasQuorum(quorumSize)) {
 			Message msg = pullMessage(MsgType.PREPARE, currentView);
 			if (msg == null) {
+                System.err.println("[HotStuff-" + replicaID + "] Leader TIMED OUT waiting for PREPARE votes! Gathered: " + newPrepareQC.getSignatures().size());
 				return false;
 			}
 			if (verifyVoteMsg(msg, proposal.getHash())) {
@@ -546,13 +568,15 @@ public class HotStuff {
 			}
 		}
 
-		// Algorithm 2, line 9: proposal must extend from justify.node AND pass safeNode
 		boolean extendsFromJustify = (justifyQC == null || justifyQC.getNode() == null)
 				|| proposal.extendsFrom(justifyQC.getNode());
 
-		if (proposal != null && extendsFromJustify && safeNode(proposal, justifyQC)) {
+		boolean safe = safeNode(proposal, justifyQC);
+		if (proposal != null && extendsFromJustify && safe) {
 			sendMessage(leader, makeVoteMsg(MsgType.PREPARE, proposal, null));
-		}
+		} else {
+            System.err.println("[HotStuff-" + replicaID + "] Dropped PREPARE! extends=" + extendsFromJustify + ", safe=" + safe);
+        }
 
 		// === PRE-COMMIT phase (replica) ===
 		Message preCommitMsg = pullMessage(MsgType.PRE_COMMIT, currentView);
@@ -617,9 +641,7 @@ public class HotStuff {
 		String cmd = node.getCommand();
 		if (cmd != null && !decidedCommands.contains(cmd)) {
 			decidedCommands.add(cmd);
-			if (onDecide != null) {
-				onDecide.accept(cmd);
-			}
+            newlyDecidedThisView.add(cmd);
 		}
 	}
 }
