@@ -1,4 +1,4 @@
-package tecnico.depchain.depchain_server;
+package tecnico.depchain.depchain_common;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

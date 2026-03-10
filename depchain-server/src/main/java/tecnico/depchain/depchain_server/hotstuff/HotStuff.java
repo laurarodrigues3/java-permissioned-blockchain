@@ -17,7 +17,7 @@ import java.util.function.Consumer;
 
 import javax.crypto.SecretKey;
 
-import tecnico.depchain.depchain_server.broadcasts.BestEffortBroadcast;
+import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
 
 public class HotStuff {

@@ -1,4 +1,4 @@
-package tecnico.depchain.depchain_server.links;
+package main.depchain.depchain_common.links;
 
 import static org.junit.jupiter.api.Assertions.*;
 

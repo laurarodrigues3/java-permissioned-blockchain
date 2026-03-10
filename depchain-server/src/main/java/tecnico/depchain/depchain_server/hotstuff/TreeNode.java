@@ -4,7 +4,7 @@ import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
-import tecnico.depchain.depchain_server.DepchainUtils;
+import tecnico.depchain.depchain_common.DepchainUtils;
 
 public class TreeNode implements Serializable {
 	private byte[] parentHash;

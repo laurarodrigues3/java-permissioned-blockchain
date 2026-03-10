@@ -1,4 +1,4 @@
-package tecnico.depchain.depchain_server.links;
+package tecnico.depchain.depchain_common.links;
 
 import java.net.InetSocketAddress;
 import java.net.SocketException;

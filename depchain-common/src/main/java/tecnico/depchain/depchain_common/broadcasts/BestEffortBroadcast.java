@@ -1,4 +1,4 @@
-package tecnico.depchain.depchain_server.broadcasts;
+package tecnico.depchain.depchain_common.broadcasts;
 
 import java.net.InetSocketAddress;
 import java.net.SocketException;
@@ -10,8 +10,8 @@ import java.util.function.BiConsumer;
 
 import javax.crypto.SecretKey;
 
-import tecnico.depchain.depchain_server.links.AuthenticatedPerfectLink;
-import tecnico.depchain.depchain_server.links.P2PLink;
+import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
+import tecnico.depchain.depchain_common.links.P2PLink;
 
 public class BestEffortBroadcast extends MultiLinkBroadcast {
 	private List<P2PLink> links;
