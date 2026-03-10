@@ -33,6 +33,7 @@ public class AuthenticatedPerfectLink extends P2PLink {
 
 		lower = new StubbornLink(this::internalRxHandler, local, remote);
 
+		//TODO: Generate keys at start
 		outgoing_mac = Mac.getInstance("HmacSHA256");
 		incoming_mac = Mac.getInstance("HmacSHA256");
 		outgoing_mac.init(ownKey);

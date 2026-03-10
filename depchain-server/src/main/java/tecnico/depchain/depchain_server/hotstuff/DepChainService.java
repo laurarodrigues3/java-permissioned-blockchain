@@ -6,6 +6,7 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.function.Consumer;
 
 import javax.crypto.SecretKey;
 
@@ -17,13 +18,14 @@ public class DepChainService implements ConsensusUpcall {
     private final int replicaID;
     private final int numReplicas;
     private final HotStuff hotStuff;
-    
+	private Consumer<String> onDecide = null;
+
     // In-memory array of append-only strings representing the blockchain
     private final List<String> blockchain = Collections.synchronizedList(new ArrayList<>());
-    
+
     public DepChainService(
             int replicaID, String host, int basePort, int numReplicas,
-            List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto) 
+            List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
             throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
         this.replicaID = replicaID;
         this.numReplicas = numReplicas;
@@ -43,6 +45,10 @@ public class DepChainService implements ConsensusUpcall {
         this.hotStuff.setBaseTimeout(timeoutMs);
     }
 
+    public void setOnDecide(Consumer<String> callback) {
+		this.onDecide = callback;
+	}
+
     /**
      * Upcall triggered by the HotStuff layer when a block reaches DECIDE.
      * @param payload The original string added by the client.
@@ -51,6 +57,8 @@ public class DepChainService implements ConsensusUpcall {
     public void onDecide(String payload) {
         blockchain.add(payload);
         System.out.println("Bloco decidido e adicionado à blockchain: " + payload);
+        if (onDecide != null)
+            onDecide(payload);
     }
 
     /**
@@ -61,9 +69,9 @@ public class DepChainService implements ConsensusUpcall {
     // 1. Defesa de Idempotência: O servidor protege-se de clientes que fazem spam (retries UDP)
     if (this.blockchain.contains(requestPayload)) {
         System.err.println("[DepChainService-" + replicaID + "] Pedido ignorado. A transação já está na blockchain: '" + requestPayload + "'");
-        // Nota para o Passo 6: Aqui o teu servidor deve re-enviar o ACK UDP ao cliente 
+        // Nota para o Passo 6: Aqui o teu servidor deve re-enviar o ACK UDP ao cliente
         // para o avisar que a transação já foi processada com sucesso no passado.
-        return; 
+        return;
     }
 
     // 2. Lógica de encaminhamento para o Líder
