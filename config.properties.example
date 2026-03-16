@@ -1,0 +1,38 @@
+# DepChain PKI Configuration
+# This file is pre-distributed to all nodes before startup.
+# Generate with: java tecnico.depchain.depchain_common.KeyGenUtil <numMembers> <numClients> <outputFile>
+#
+# === Members (Replicas) ===
+member.count=4
+
+member.0.host=localhost
+member.0.port=42069
+member.0.publickey=MCowBQYDK2VwAyEA...BASE64_ENCODED_X509_PUBLIC_KEY...
+
+member.1.host=localhost
+member.1.port=42070
+member.1.publickey=MCowBQYDK2VwAyEA...BASE64_ENCODED_X509_PUBLIC_KEY...
+
+member.2.host=localhost
+member.2.port=42071
+member.2.publickey=MCowBQYDK2VwAyEA...BASE64_ENCODED_X509_PUBLIC_KEY...
+
+member.3.host=localhost
+member.3.port=42072
+member.3.publickey=MCowBQYDK2VwAyEA...BASE64_ENCODED_X509_PUBLIC_KEY...
+
+# === Clients ===
+client.count=1
+
+client.0.host=localhost
+client.0.port=6900
+client.0.publickey=MCowBQYDK2VwAyEA...BASE64_ENCODED_X509_PUBLIC_KEY...
+
+# === Private Keys (PKCS#8, Base64) ===
+# Each node loads ONLY its own private key via its node ID.
+# Member IDs: 0..3, Client node IDs: 4..4
+node.0.privatekey=MC4CAQAwBQYDK2VwBCIEIA...BASE64_ENCODED_PKCS8_PRIVATE_KEY...
+node.1.privatekey=MC4CAQAwBQYDK2VwBCIEIA...BASE64_ENCODED_PKCS8_PRIVATE_KEY...
+node.2.privatekey=MC4CAQAwBQYDK2VwBCIEIA...BASE64_ENCODED_PKCS8_PRIVATE_KEY...
+node.3.privatekey=MC4CAQAwBQYDK2VwBCIEIA...BASE64_ENCODED_PKCS8_PRIVATE_KEY...
+node.4.privatekey=MC4CAQAwBQYDK2VwBCIEIA...BASE64_ENCODED_PKCS8_PRIVATE_KEY...

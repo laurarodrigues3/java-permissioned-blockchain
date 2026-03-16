@@ -8,37 +8,44 @@ import java.util.function.BiConsumer;
 import java.util.HashSet;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-
-import javax.crypto.Mac;
-import javax.crypto.SecretKey;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.SignatureException;
 
 // Authenticated Perfect link implementation
-// Prepends MACs to messages for authenticity validation
+// Prepends digital signatures to messages for authenticity validation
 // Deduplicates messages to guarantee at-most-once delivery
 
 public class AuthenticatedPerfectLink extends P2PLink {
 	private StubbornLink lower;
-	private Mac outgoing_mac, incoming_mac;
+	private PrivateKey ownKey;
+	private PublicKey remoteKey;
+	private int sigLength;
 	private long txSeqNum = 0;
 	private long highWaterMark = -1;
 	private Set<Long> outOfOrder = new HashSet<>();
 
 	public AuthenticatedPerfectLink(
 			BiConsumer<byte[], InetSocketAddress> rxHandler, InetSocketAddress local, InetSocketAddress remote,
-			SecretKey ownKey, SecretKey remoteKey)
+			PrivateKey ownKey, PublicKey remoteKey)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException {
 		super(rxHandler);
 
+		this.ownKey = ownKey;
+		this.remoteKey = remoteKey;
+
 		lower = new StubbornLink(this::internalRxHandler, local, remote);
 
-		outgoing_mac = Mac.getInstance("HmacSHA256");
-		incoming_mac = Mac.getInstance("HmacSHA256");
-		outgoing_mac.init(ownKey);
-		incoming_mac.init(remoteKey);
-
-		// Make sure MAC size is the expected
-		if (outgoing_mac.getMacLength() != 32)
-			throw new RuntimeException("Unexpected MAC length: expected 32 bytes");
+		// Determine signature length by signing a test byte
+		try {
+			Signature sig = Signature.getInstance("Ed25519");
+			sig.initSign(ownKey);
+			sig.update(new byte[]{0});
+			this.sigLength = sig.sign().length;
+		} catch (SignatureException e) {
+			throw new RuntimeException("Failed to determine Ed25519 signature length", e);
+		}
 	}
 
 	public void transmit(byte[] data) {
@@ -50,11 +57,19 @@ public class AuthenticatedPerfectLink extends P2PLink {
 		seqBuffer.put(data);
 		byte[] dataWithSeq = seqBuffer.array();
 
-		// Compute MAC over data+seq and prepend it
-		byte[] mac_bytes = outgoing_mac.doFinal(dataWithSeq);
+		// Sign data+seq and prepend signature
+		byte[] sigBytes;
+		try {
+			Signature sig = Signature.getInstance("Ed25519");
+			sig.initSign(ownKey);
+			sig.update(dataWithSeq);
+			sigBytes = sig.sign();
+		} catch (Exception e) {
+			throw new RuntimeException("Ed25519 signing failed", e);
+		}
 
-		var buffer = ByteBuffer.allocate(32 + dataWithSeq.length);
-		buffer.put(mac_bytes);
+		var buffer = ByteBuffer.allocate(sigBytes.length + dataWithSeq.length);
+		buffer.put(sigBytes);
 		buffer.put(dataWithSeq);
 
 		lower.transmit(buffer.array());
@@ -62,22 +77,26 @@ public class AuthenticatedPerfectLink extends P2PLink {
 
 	// Handler for lower receive
 	private void internalRxHandler(byte[] bytes, InetSocketAddress remote) {
-		// Ignore too small to contain MAC + sequence number
+		// Ignore too small to contain signature + sequence number
 		// Prevents crash on malformed messages (by byzantine nodes)
-		if (bytes.length < 32 + 8)
+		if (bytes.length < sigLength + 8)
 			return;
 
-		byte[] received_mac = new byte[32];
-		byte[] payload = new byte[bytes.length - 32];
+		byte[] receivedSig = new byte[sigLength];
+		byte[] payload = new byte[bytes.length - sigLength];
 		var buffer = ByteBuffer.wrap(bytes);
-		buffer.get(received_mac);
+		buffer.get(receivedSig);
 		buffer.get(payload);
 
-		byte[] calculated_mac = incoming_mac.doFinal(payload);
-
-		for (int i = 0; i < calculated_mac.length; ++i) {
-			if (calculated_mac[i] != received_mac[i])
-				return; // Ignore bad message
+		// Verify signature over payload using remote's public key
+		try {
+			Signature sig = Signature.getInstance("Ed25519");
+			sig.initVerify(remoteKey);
+			sig.update(payload);
+			if (!sig.verify(receivedSig))
+				return; // Invalid signature, drop message
+		} catch (Exception e) {
+			return; // Verification error, drop message
 		}
 
 		// Extract sequence number for deduplication

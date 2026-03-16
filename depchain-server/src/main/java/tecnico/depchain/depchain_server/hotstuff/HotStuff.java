@@ -4,6 +4,8 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -14,8 +16,6 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-
-import javax.crypto.SecretKey;
 
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
@@ -65,14 +65,15 @@ public class HotStuff {
 	 * @param host            Host address for all replicas
 	 * @param basePort        Base port for the system
 	 * @param numReplicas     Total number of replicas
-	 * @param keys            List of n shared HMAC keys (index i = shared key with replica i)
+	 * @param ownKey          This replica's Ed25519 private key (for signing outgoing link messages)
+	 * @param publicKeys      List of n Ed25519 public keys (index i = public key of replica i)
 	 * @param crypto          CryptoService for Ed25519 signing/verification (Step 5)
 	 * @param thresholdCrypto ThresholdCrypto for threshold QC signatures (nullable)
 	 * @param upcall          Upcall for notifying the application layer on DECIDE completion
 	 */
 	public HotStuff(
 			int replicaID, String host, int basePort, int numReplicas,
-			List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto, ConsensusUpcall upcall)
+			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto, ThresholdCrypto thresholdCrypto, ConsensusUpcall upcall)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		this.replicaID = replicaID;
 		this.upcall = upcall;
@@ -84,7 +85,7 @@ public class HotStuff {
 
 		List<InetSocketAddress> locals = new ArrayList<>();
 		List<InetSocketAddress> remotes = new ArrayList<>();
-		List<SecretKey> peerKeys = new ArrayList<>();
+		List<PublicKey> peerKeys = new ArrayList<>();
 
 		for (int j = 0; j < numReplicas; j++) {
 			if (j == replicaID)
@@ -96,25 +97,24 @@ public class HotStuff {
 			int remotePort = basePort + j * numReplicas + (replicaID < j ? replicaID : replicaID - 1);
 			remotes.add(new InetSocketAddress(host, remotePort));
 
-			peerKeys.add(keys.get(j));
+			peerKeys.add(publicKeys.get(j));
 		}
 
-		SecretKey ownKey = keys.get(replicaID);
 		broadcast = new BestEffortBroadcast(this::handleMsg, this::handleMsg, locals, ownKey, remotes, peerKeys);
 	}
 
 	public HotStuff(
 			int replicaID, String host, int basePort, int numReplicas,
-			List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
+			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		this(replicaID, host, basePort, numReplicas, keys, crypto, thresholdCrypto, null);
+		this(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, thresholdCrypto, null);
 	}
 
 	public HotStuff(
 			int replicaID, String host, int basePort, int numReplicas,
-			List<SecretKey> keys, CryptoService crypto)
+			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		this(replicaID, host, basePort, numReplicas, keys, crypto, null, null);
+		this(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, null, null);
 	}
 
 

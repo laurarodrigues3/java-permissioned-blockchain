@@ -10,9 +10,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-
 import org.junit.jupiter.api.Test;
 
 
@@ -32,11 +29,6 @@ public class HotStuffStep5Test {
 	private static final String HOST = "127.0.0.1";
 	private static final int BASE_PORT = 60000;
 
-	private static SecretKey generateKey() throws Exception {
-		KeyGenerator kg = KeyGenerator.getInstance("HmacSHA256");
-		return kg.generateKey();
-	}
-
 	/**
 	 * Create n replicas where replicas are given mismatched
 	 * Ed25519 keys (their signatures will be invalid to everyone else).
@@ -44,10 +36,6 @@ public class HotStuffStep5Test {
 	 */
 	private HotStuff[] createReplicasWithByzantine(int n, int basePort, int... byzantineIds)
 			throws Exception {
-		List<SecretKey> hmacKeys = new ArrayList<>();
-		for (int i = 0; i < n; i++)
-			hmacKeys.add(generateKey());
-
 		List<KeyPair> honestKeyPairs = CryptoService.generateKeyPairs(n);
 		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(honestKeyPairs);
 
@@ -73,7 +61,7 @@ public class HotStuffStep5Test {
 			ThresholdCrypto tc = new ThresholdCrypto(i, threshold, n, dealerParams.pairingParamsStr,
 					dealerParams.generator, dealerParams.globalPublicKey, dealerParams.privateShares.get(i),
 					dealerParams.publicShares);
-			replicas[i] = new HotStuff(i, HOST, basePort, n, new ArrayList<>(hmacKeys), crypto, tc);
+			replicas[i] = new HotStuff(i, HOST, basePort, n, honestKeyPairs.get(i).getPrivate(), publicKeys, crypto, tc);
 		}
 		return replicas;
 	}

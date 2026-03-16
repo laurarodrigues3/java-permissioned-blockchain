@@ -7,9 +7,6 @@ import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-
 import org.junit.jupiter.api.Test;
 
 /**
@@ -21,16 +18,7 @@ public class HotStuffStep6Test {
 	private static final String HOST = "127.0.0.1";
 	private static final int BASE_PORT = 50000;
 
-	private static SecretKey generateKey() throws Exception {
-		KeyGenerator kg = KeyGenerator.getInstance("HmacSHA256");
-		return kg.generateKey();
-	}
-
 	private DepChainService[] createServices(int n, int basePort) throws Exception {
-		List<SecretKey> hmacKeys = new ArrayList<>();
-		for (int i = 0; i < n; i++)
-			hmacKeys.add(generateKey());
-
 		List<KeyPair> keyPairs = CryptoService.generateKeyPairs(n);
 		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(keyPairs);
 
@@ -45,7 +33,7 @@ public class HotStuffStep6Test {
 			ThresholdCrypto tc = new ThresholdCrypto(i, threshold, n, dealerParams.pairingParamsStr,
 					dealerParams.generator, dealerParams.globalPublicKey, dealerParams.privateShares.get(i),
 					dealerParams.publicShares);
-			services[i] = new DepChainService(i, HOST, basePort, n, new ArrayList<>(hmacKeys), crypto, tc);
+			services[i] = new DepChainService(i, HOST, basePort, n, keyPairs.get(i).getPrivate(), publicKeys, crypto, tc);
 		}
 		return services;
 	}

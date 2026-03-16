@@ -4,11 +4,11 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import javax.crypto.SecretKey;
 
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
@@ -29,7 +29,7 @@ public class Depchain {
 	private int f;
 	private int quorumSize;
 
-	public Depchain(List<InetSocketAddress> locals, SecretKey ownKey, List<InetSocketAddress> remotes, List<SecretKey> remoteKeys)
+	public Depchain(List<InetSocketAddress> locals, PrivateKey ownKey, List<InetSocketAddress> remotes, List<PublicKey> remoteKeys)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		broadcast = new BestEffortBroadcast(this::rxHandler, this::rxHandler, locals, ownKey, remotes, remoteKeys);
 		this.numReplicas = remotes.size();

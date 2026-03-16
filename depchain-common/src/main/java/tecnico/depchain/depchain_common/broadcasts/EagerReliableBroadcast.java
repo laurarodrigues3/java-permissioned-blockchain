@@ -4,12 +4,12 @@ import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
-
-import javax.crypto.SecretKey;
 
 import tecnico.depchain.depchain_common.DepchainUtils;
 
@@ -19,8 +19,8 @@ public class EagerReliableBroadcast extends MultiLinkBroadcast {
 
 	public EagerReliableBroadcast(
 			BiConsumer<byte[], InetSocketAddress> rxHandler, BiConsumer<byte[], InetSocketAddress> brdHandler,
-			List<InetSocketAddress> locals, SecretKey ownKey,
-			List<InetSocketAddress> remotes, List<SecretKey> remoteKeys)
+			List<InetSocketAddress> locals, PrivateKey ownKey,
+			List<InetSocketAddress> remotes, List<PublicKey> remoteKeys)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		super(rxHandler, brdHandler);
 

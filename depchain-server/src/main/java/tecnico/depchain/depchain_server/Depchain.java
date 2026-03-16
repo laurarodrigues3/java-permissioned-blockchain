@@ -1,19 +1,24 @@
 package tecnico.depchain.depchain_server;
 
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.InvalidKeyException;
+import java.security.KeyPair;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-import javax.crypto.SecretKey;
-
 import tecnico.depchain.depchain_common.DepchainClient;
+import tecnico.depchain.depchain_common.DepchainMember;
 import tecnico.depchain.depchain_common.Membership;
 import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
 import tecnico.depchain.depchain_common.messages.StringMessage;
+import tecnico.depchain.depchain_server.hotstuff.CryptoService;
 import tecnico.depchain.depchain_server.hotstuff.DepChainService;
 
 public class Depchain {
@@ -23,25 +28,37 @@ public class Depchain {
 	private static Map<String, Long> requestIdMap = new HashMap<>();
 
 	public static void main(String[] args)
-		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		if (args.length != 1) {
-			System.err.print("Usage: java <class_path> <replicaID>");
+		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException, IOException {
+		if (args.length < 2) {
+			System.err.print("Usage: java <class_path> <replicaID> <configFilePath>");
 			System.exit(1);
 		}
 
 		int replicaID = Integer.parseInt(args[0]);
-		int numReplicas = Membership.members.length;
-		InetSocketAddress local = new InetSocketAddress("0.0.0.0", Membership.members[replicaID].getAddress().getPort());
-		SecretKey ownKey = Membership.members[replicaID].getMacKey();
+		String configPath = args[1];
 
-		// FIXME: Not pass NULL arguments
-		service = new DepChainService(replicaID, "localhost", 42069, numReplicas, Membership.getMemberMacs(), null, null);
+		// Load membership from static configuration (pre-distributed PKI)
+		Membership.loadConfiguration(configPath, replicaID);
+
+		DepchainMember[] members = Membership.getMembers();
+		DepchainClient[] clients = Membership.getClients();
+		int numReplicas = members.length;
+		PrivateKey ownKey = Membership.getOwnPrivateKey();
+		List<PublicKey> publicKeys = Membership.getMemberPublicKeys();
+
+		InetSocketAddress local = new InetSocketAddress("0.0.0.0", members[replicaID].getAddress().getPort());
+
+		// Build CryptoService from the loaded PKI
+		KeyPair ownKeyPair = new KeyPair(publicKeys.get(replicaID), ownKey);
+		CryptoService crypto = new CryptoService(replicaID, ownKeyPair, publicKeys);
+
+		service = new DepChainService(replicaID, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null);
 		service.setOnDecide(Depchain::onDecide);
 		service.start();
 
-		for (DepchainClient cli : Membership.clients) {
+		for (DepchainClient cli : clients) {
 			InetSocketAddress addr = cli.getAddress();
-			links.put(addr, new AuthenticatedPerfectLink(Depchain::rxHandler, local, addr, ownKey, cli.getMacKey()));
+			links.put(addr, new AuthenticatedPerfectLink(Depchain::rxHandler, local, addr, ownKey, cli.getPublicKey()));
 		}
 
 		while (true);

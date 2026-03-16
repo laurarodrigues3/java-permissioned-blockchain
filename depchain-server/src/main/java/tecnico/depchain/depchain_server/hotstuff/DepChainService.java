@@ -3,12 +3,12 @@ package tecnico.depchain.depchain_server.hotstuff;
 import java.net.SocketException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
-
-import javax.crypto.SecretKey;
 
 public class DepChainService implements ConsensusUpcall {
     private final int replicaID;
@@ -21,12 +21,12 @@ public class DepChainService implements ConsensusUpcall {
 
     public DepChainService(
             int replicaID, String host, int basePort, int numReplicas,
-            List<SecretKey> keys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
+            PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
             throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
         this.replicaID = replicaID;
         this.numReplicas = numReplicas;
         // Pass "this" as the ConsensusUpcall
-        this.hotStuff = new HotStuff(replicaID, host, basePort, numReplicas, keys, crypto, thresholdCrypto, this);
+        this.hotStuff = new HotStuff(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, thresholdCrypto, this);
     }
 
     public void start() {

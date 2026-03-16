@@ -3,24 +3,27 @@ package main.depchain.depchain_common.links;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.net.InetSocketAddress;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-
 import org.junit.jupiter.api.Test;
+
+import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 
 public class AuthenticatedPerfectLinkTest {
 
 	private static final String HOST = "127.0.0.1";
 
-	/** Generate a fresh HMAC-SHA256 key */
-	private static SecretKey generateKey() throws Exception {
-		KeyGenerator kg = KeyGenerator.getInstance("HmacSHA256");
-		return kg.generateKey();
+	/** Generate a fresh Ed25519 key pair */
+	private static KeyPair generateKeyPair() throws Exception {
+		KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
+		return kpg.generateKeyPair();
 	}
 
 	@Test
@@ -28,20 +31,18 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18001);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18002);
 
-		// Two shared secrets: one per direction
-		SecretKey keyA = generateKey();
-		SecretKey keyB = generateKey();
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
 
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		// A sends with keyA, verifies incoming with keyB
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyA, keyB);
-		// B sends with keyB, verifies incoming with keyA
+		// A signs with its private key, B verifies with A's public key
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		}, addrB, addrA, keyB, keyA);
+		}, addrB, addrA, kpB.getPrivate(), kpA.getPublic());
 
 		byte[] message = "Hello authenticated world".getBytes();
 		linkA.transmit(message);
@@ -55,18 +56,18 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18003);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18004);
 
-		SecretKey keyA = generateKey();
-		SecretKey keyB = generateKey();
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
 
 		int messageCount = 5;
 		CountDownLatch latch = new CountDownLatch(messageCount);
 		java.util.Set<String> receivedMessages = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyA, keyB);
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedMessages.add(new String(data));
 			latch.countDown();
-		}, addrB, addrA, keyB, keyA);
+		}, addrB, addrA, kpB.getPrivate(), kpA.getPublic());
 
 
 		for (int i = 0; i < messageCount; i++) {
@@ -86,8 +87,8 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18005);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18006);
 
-		SecretKey keyAtoB = generateKey();
-		SecretKey keyBtoA = generateKey();
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
 
 		CountDownLatch latchA = new CountDownLatch(1);
 		CountDownLatch latchB = new CountDownLatch(1);
@@ -97,11 +98,11 @@ public class AuthenticatedPerfectLinkTest {
 		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedByA.set(data);
 			latchA.countDown();
-		}, addrA, addrB, keyAtoB, keyBtoA);
+		}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			receivedByB.set(data);
 			latchB.countDown();
-		}, addrB, addrA, keyBtoA, keyAtoB);
+		}, addrB, addrA, kpB.getPrivate(), kpA.getPublic());
 
 		linkA.transmit("A says hi".getBytes());
 		linkB.transmit("B says hi".getBytes());
@@ -117,17 +118,17 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18007);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18008);
 
-		SecretKey keyAtoB = generateKey();
-		SecretKey keyBtoA = generateKey();
-		SecretKey wrongKey = generateKey(); // B uses wrong key to verify
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
+		KeyPair kpWrong = generateKeyPair(); // B uses wrong public key to verify
 
 		CountDownLatch latch = new CountDownLatch(1);
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
-		// B verifies with wrongKey instead of keyAtoB → should reject all from A
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
+		// B verifies with wrong public key instead of A's → should reject all from A
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			latch.countDown(); // Should NOT be called
-		}, addrB, addrA, keyBtoA, wrongKey);
+		}, addrB, addrA, kpB.getPrivate(), kpWrong.getPublic());
 
 		linkA.transmit("This should be rejected".getBytes());
 
@@ -141,17 +142,17 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18009);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18010);
 
-		SecretKey keyAtoB = generateKey();
-		SecretKey keyBtoA = generateKey();
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
 
 		AtomicInteger deliveryCount = new AtomicInteger(0);
 		CountDownLatch firstDelivery = new CountDownLatch(1);
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			deliveryCount.incrementAndGet();
 			firstDelivery.countDown();
-		}, addrB, addrA, keyBtoA, keyAtoB);
+		}, addrB, addrA, kpB.getPrivate(), kpA.getPublic());
 
 		// Send a single messagestubborn link will retransmit it multiple times
 		// but AuthenticatedPerfectLink should deliver it exactly once
@@ -171,17 +172,17 @@ public class AuthenticatedPerfectLinkTest {
 		InetSocketAddress addrA = new InetSocketAddress(HOST, 18011);
 		InetSocketAddress addrB = new InetSocketAddress(HOST, 18012);
 
-		SecretKey keyAtoB = generateKey();
-		SecretKey keyBtoA = generateKey();
+		KeyPair kpA = generateKeyPair();
+		KeyPair kpB = generateKeyPair();
 
 		CountDownLatch latch = new CountDownLatch(1);
 		AtomicReference<byte[]> received = new AtomicReference<>();
 
-		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, keyAtoB, keyBtoA);
+		AuthenticatedPerfectLink linkA = new AuthenticatedPerfectLink((data, remote) -> {}, addrA, addrB, kpA.getPrivate(), kpB.getPublic());
 		AuthenticatedPerfectLink linkB = new AuthenticatedPerfectLink((data, remote) -> {
 			received.set(data);
 			latch.countDown();
-		}, addrB, addrA, keyBtoA, keyAtoB);
+		}, addrB, addrA, kpB.getPrivate(), kpA.getPublic());
 
 		// Send binary data to ensure no corruption through the layers
 		byte[] binaryData = new byte[256];

@@ -9,9 +9,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.crypto.KeyGenerator;
-import javax.crypto.SecretKey;
-
 import org.junit.jupiter.api.Test;
 
 /**
@@ -22,23 +19,14 @@ public class HotStuffStep4Test {
 	private static final String HOST = "127.0.0.1";
 	private static final int BASE_PORT = 30000;
 
-	private static SecretKey generateKey() throws Exception {
-		KeyGenerator kg = KeyGenerator.getInstance("HmacSHA256");
-		return kg.generateKey();
-	}
-
 	private HotStuff[] createReplicas(int n, int basePort) throws Exception {
-		List<SecretKey> keys = new ArrayList<>();
-		for (int i = 0; i < n; i++)
-			keys.add(generateKey());
-
 		List<KeyPair> keyPairs = CryptoService.generateKeyPairs(n);
 		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(keyPairs);
 
 		HotStuff[] replicas = new HotStuff[n];
 		for (int i = 0; i < n; i++) {
 			CryptoService crypto = new CryptoService(i, keyPairs.get(i), publicKeys);
-			replicas[i] = new HotStuff(i, HOST, basePort, n, new ArrayList<>(keys), crypto);
+			replicas[i] = new HotStuff(i, HOST, basePort, n, keyPairs.get(i).getPrivate(), publicKeys, crypto);
 		}
 		return replicas;
 	}

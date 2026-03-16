@@ -1,18 +1,17 @@
 package tecnico.depchain.depchain_common;
 
 import java.net.InetSocketAddress;
-
-import javax.crypto.SecretKey;
+import java.security.PublicKey;
 
 public class DepchainMember {
 	private InetSocketAddress address;
-	private SecretKey macKey;
+	private PublicKey publicKey;
 
-	public DepchainMember(InetSocketAddress address, SecretKey macKey) {
+	public DepchainMember(InetSocketAddress address, PublicKey publicKey) {
 		this.address = address;
-		this.macKey = macKey;
+		this.publicKey = publicKey;
 	}
 
-	public SecretKey getMacKey() { return macKey; }
+	public PublicKey getPublicKey() { return publicKey; }
 	public InetSocketAddress getAddress() { return address; }
 }
