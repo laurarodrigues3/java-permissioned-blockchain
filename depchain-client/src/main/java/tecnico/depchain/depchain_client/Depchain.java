@@ -23,43 +23,81 @@ enum RequestStatus {
 public class Depchain {
 	private BestEffortBroadcast broadcast;
 	private Map<Long, RequestStatus> pendingMessages = new HashMap<>();
+	private Map<Long, java.util.Set<InetSocketAddress>> confirmations = new HashMap<>();
+
+	private int numReplicas;
+	private int f;
+	private int quorumSize;
 
 	public Depchain(List<InetSocketAddress> locals, SecretKey ownKey, List<InetSocketAddress> remotes, List<SecretKey> remoteKeys)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		broadcast = new BestEffortBroadcast(this::rxHandler, this::rxHandler, locals, ownKey, remotes, remoteKeys);
+		this.numReplicas = remotes.size();
+		this.f = (numReplicas - 1) / 3;
+		// A client requires f+1 matching responses to guarantee at least 1 honest replica processed it
+		this.quorumSize = f + 1; 
 	}
 
 	public boolean AppendString(String content) {
 		StringMessage msg = new StringMessage(content);
 		Long seqNum = msg.getSeqNum();
-		synchronized (pendingMessages)
-		{ pendingMessages.put(seqNum, RequestStatus.SENT); }
+		
+		synchronized (pendingMessages) { 
+			pendingMessages.put(seqNum, RequestStatus.SENT); 
+			confirmations.put(seqNum, new java.util.HashSet<>());
+		}
 
-		broadcast.broadcast(msg.serialize());
+		long timeoutMs = 2000; // 2 seconds before retrying
 
-		//FIXME: Stuck forever if confirmation never arrives
-		//Wait for reply msg
-		do {
-			try
-			{ pendingMessages.wait(); }
-			catch (InterruptedException e)
-			{ /* Ignore */ }
-		} while (pendingMessages.get(seqNum) == RequestStatus.SENT);
+		while (true) {
+			broadcast.broadcast(msg.serialize());
 
-		boolean accepted = pendingMessages.get(seqNum) == RequestStatus.ACCEPTED;
+			synchronized (pendingMessages) {
+				try { 
+					pendingMessages.wait(timeoutMs); 
+				} catch (InterruptedException e) { /* Ignore */ }
+				
+				if (pendingMessages.get(seqNum) != RequestStatus.SENT) {
+					break; // Reached ACCEPTED or REJECTED
+				}
+			}
+			// If still SENT, loop continues and broadcasts again
+			System.out.println("[Depchain Client] Timeout waiting for f+1 ConfirmMessages. Retrying seqNum=" + seqNum + "...");
+		}
 
-		synchronized (pendingMessages)
-		{ pendingMessages.remove(seqNum); }
+		boolean accepted;
+		synchronized (pendingMessages) {
+			accepted = pendingMessages.get(seqNum) == RequestStatus.ACCEPTED;
+			pendingMessages.remove(seqNum);
+			confirmations.remove(seqNum); // Clean up
+		}
 
 		return accepted;
 	}
 
 	private void rxHandler(byte[] data, InetSocketAddress remote) {
 		//HACK: Assumes all incoming messages are ConfirmMessage
-
 		ConfirmMessage msg = ConfirmMessage.deserialize(data);
-		synchronized (pendingMessages)
-		{ pendingMessages.replace(msg.getSeqNum(), msg.getAccepted() ? RequestStatus.ACCEPTED : RequestStatus.REJECTED); }
-		pendingMessages.notifyAll();
+		if (msg == null) return;
+
+		Long seqNum = msg.getSeqNum();
+
+		synchronized (pendingMessages) {
+			if (pendingMessages.get(seqNum) == RequestStatus.SENT) {
+				java.util.Set<InetSocketAddress> confs = confirmations.get(seqNum);
+				if (confs != null) {
+					confs.add(remote); // Track unique responders
+
+					// If we get f+1 matching responses, we can safely accept/reject
+					if (msg.getAccepted() && confs.size() >= quorumSize) {
+						pendingMessages.replace(seqNum, RequestStatus.ACCEPTED);
+						pendingMessages.notifyAll();
+					} else if (!msg.getAccepted() && confs.size() >= quorumSize) {
+						pendingMessages.replace(seqNum, RequestStatus.REJECTED);
+						pendingMessages.notifyAll();
+					}
+				}
+			}
+		}
 	}
 }
