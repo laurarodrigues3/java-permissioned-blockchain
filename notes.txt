@@ -1,6 +1,11 @@
-Key exchange for ALP
-Leader wait for new view (ignores QC)
-Lib rx should wait for 2f
-Cli digital signature
+POR IMPLEMENTAR:
+Leader wait for new view (ignores QC) - igual em todas as rondas
+Cli digital signature - ed25519
+implementar aplicação parte do cliente para testar interativamente
+
+TESTES:
 2 replica crash
 partial signature invalida da replica
+
+ANALISAR:
+caso a mensagem não seja aceite numa view passa para as proóximas views até ser aceite ou o cliente tem de retransmitir???
