@@ -28,9 +28,13 @@ public class Depchain {
 	private int numReplicas;
 	private int f;
 	private int quorumSize;
+	private int clientId;
+	private PrivateKey ownKey;
 
-	public Depchain(List<InetSocketAddress> locals, PrivateKey ownKey, List<InetSocketAddress> remotes, List<PublicKey> remoteKeys)
+	public Depchain(int clientId, List<InetSocketAddress> locals, PrivateKey ownKey, List<InetSocketAddress> remotes, List<PublicKey> remoteKeys)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+		this.clientId = clientId;
+		this.ownKey = ownKey;
 		broadcast = new BestEffortBroadcast(this::rxHandler, this::rxHandler, locals, ownKey, remotes, remoteKeys);
 		this.numReplicas = remotes.size();
 		this.f = (numReplicas - 1) / 3;
@@ -39,7 +43,8 @@ public class Depchain {
 	}
 
 	public boolean AppendString(String content) {
-		StringMessage msg = new StringMessage(content);
+		StringMessage msg = new StringMessage(clientId, content);
+		msg.sign(ownKey);
 		Long seqNum = msg.getSeqNum();
 		
 		synchronized (pendingMessages) { 
