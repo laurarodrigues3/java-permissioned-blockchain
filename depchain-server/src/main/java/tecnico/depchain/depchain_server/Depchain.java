@@ -69,6 +69,19 @@ public class Depchain {
 	private static void rxHandler(byte[] data, InetSocketAddress sender) {
 
 		StringMessage msg = StringMessage.deserialize(data);
+		if (msg == null) return;
+
+		int clientId = msg.getClientId();
+		if (clientId < 0 || clientId >= Membership.getClients().length) {
+			System.err.println("[Server] Invalid client ID: " + clientId);
+			return;
+		}
+
+		PublicKey clientKey = Membership.getClients()[clientId].getPublicKey();
+		if (!msg.verify(clientKey)) {
+			System.err.println("[Server] Invalid signature for client request from " + clientId);
+			return;
+		}
 
 		//Map response to client
 		synchronized (requestSenderMap)

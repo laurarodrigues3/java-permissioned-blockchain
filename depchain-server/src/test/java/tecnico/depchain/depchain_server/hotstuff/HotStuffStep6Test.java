@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.security.KeyPair;
 import java.security.PublicKey;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -45,22 +44,6 @@ public class HotStuffStep6Test {
 			}
 		}
 		try { Thread.sleep(500); } catch (InterruptedException ignored) {}
-	}
-
-	private void waitUntilBlockchainReachesSize(DepChainService[] services, int targetSize, int maxWaitMs) throws InterruptedException {
-		long start = System.currentTimeMillis();
-		while (System.currentTimeMillis() - start < maxWaitMs) {
-			boolean allReached = true;
-			for (DepChainService s : services) {
-				if (s.getBlockchain().size() < targetSize) {
-					allReached = false;
-					break;
-				}
-			}
-			if (allReached) return;
-			Thread.sleep(100);
-		}
-		fail("Timeout waiting for blockchain to reach size " + targetSize);
 	}
 
 	/**

@@ -38,7 +38,7 @@ public class CryptoService {
 	}
 
 	/**
-	 * Pre-generate key pairs for all replicas (used during system setup / testing).
+	 * Pre-generate key pairs for all replicas (used during testing).
 	 */
 	public static List<KeyPair> generateKeyPairs(int n) throws NoSuchAlgorithmException {
 		KeyPairGenerator kpg = KeyPairGenerator.getInstance("Ed25519");
@@ -50,7 +50,7 @@ public class CryptoService {
 	}
 
 	/**
-	 * Extract the list of public keys from a list of key pairs (for distribution).
+	 * Extract the list of public keys from a list of key pairs for distribution (used in testing).
 	 */
 	public static List<PublicKey> extractPublicKeys(List<KeyPair> keyPairs) {
 		List<PublicKey> pubs = new ArrayList<>();
@@ -73,7 +73,7 @@ public class CryptoService {
 		}
 	}
 
-	
+
 	public boolean verify(int senderId, byte[] data, byte[] signature) {
 		if (senderId < 0 || senderId >= publicKeys.size() || signature == null)
 			return false;
