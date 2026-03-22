@@ -4,7 +4,7 @@ import java.io.Serializable;
 
 import java.math.BigInteger;
 
-import org.apache.tuweni.units.ethereum.Wei;
+import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.datatypes.Address;
 
 public abstract class AccountState implements Serializable {
