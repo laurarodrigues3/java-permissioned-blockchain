@@ -20,8 +20,8 @@ public class HotStuffStep4Test {
 	private static final int BASE_PORT = 30000;
 
 	private HotStuff[] createReplicas(int n, int basePort) throws Exception {
-		List<KeyPair> keyPairs = CryptoService.generateKeyPairs(n);
-		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(keyPairs);
+		List<KeyPair> keyPairs = TestKeyHelper.readKeysFromTestConfig(n);
+		List<PublicKey> publicKeys = TestKeyHelper.extractPublicKeys(keyPairs);
 
 		HotStuff[] replicas = new HotStuff[n];
 		for (int i = 0; i < n; i++) {

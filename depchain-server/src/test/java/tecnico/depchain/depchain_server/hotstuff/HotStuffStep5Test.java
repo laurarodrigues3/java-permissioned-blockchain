@@ -36,8 +36,8 @@ public class HotStuffStep5Test {
 	 */
 	private HotStuff[] createReplicasWithByzantine(int n, int basePort, int... byzantineIds)
 			throws Exception {
-		List<KeyPair> honestKeyPairs = CryptoService.generateKeyPairs(n);
-		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(honestKeyPairs);
+		List<KeyPair> honestKeyPairs = TestKeyHelper.readKeysFromTestConfig(n);
+		List<PublicKey> publicKeys = TestKeyHelper.extractPublicKeys(honestKeyPairs);
 
 		int f = (n - 1) / 3;
 		int threshold = 2 * f + 1;

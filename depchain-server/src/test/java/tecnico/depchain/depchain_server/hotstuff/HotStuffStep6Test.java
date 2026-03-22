@@ -18,8 +18,8 @@ public class HotStuffStep6Test {
 	private static final int BASE_PORT = 50000;
 
 	private DepChainService[] createServices(int n, int basePort) throws Exception {
-		List<KeyPair> keyPairs = CryptoService.generateKeyPairs(n);
-		List<PublicKey> publicKeys = CryptoService.extractPublicKeys(keyPairs);
+		List<KeyPair> keyPairs = TestKeyHelper.readKeysFromTestConfig(n);
+		List<PublicKey> publicKeys = TestKeyHelper.extractPublicKeys(keyPairs);
 
 		int f = (n - 1) / 3;
 		int threshold = 2 * f + 1;
