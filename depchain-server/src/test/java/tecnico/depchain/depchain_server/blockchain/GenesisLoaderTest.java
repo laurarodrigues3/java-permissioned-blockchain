@@ -35,16 +35,13 @@ public class GenesisLoaderTest {
 
         // 2. Recuperar Endereços dos Contratos
         // Na EVM, address = keccak256(rlp(sender, nonce))
-        // AccessControl foi o nonce 0, ISTCoin foi o nonce 1
-        Address accessControlAddress = Address.contractAddress(adminAddress, 0L);
-        Address istCoinAddress = Address.contractAddress(adminAddress, 1L);
+        // Como o AccessControl foi removido, a ISTCoin volta a ser a transação nonce 0!
+        Address istCoinAddress = Address.contractAddress(adminAddress, 0L);
 
         System.out.println("\n--- Enderecos Recuperados ---");
-        System.out.println("Access Control: " + accessControlAddress.toHexString());
         System.out.println("IST Coin:       " + istCoinAddress.toHexString());
         
         // Validar que os contratos foram mesmo implantados e contêm código
-        assertTrue(evm.getUpdater().getAccount(accessControlAddress).hasCode(), "Access Control deve ter código implantado.");
         assertTrue(evm.getUpdater().getAccount(istCoinAddress).hasCode(), "IST Coin deve ter código implantado.");
 
         // 3. A Prova dos 9 (Smart Contract Call - balanceOf)

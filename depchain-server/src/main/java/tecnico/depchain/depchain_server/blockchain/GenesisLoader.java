@@ -44,75 +44,46 @@ public class GenesisLoader {
             if (genesis.state != null) {
                 for (Map.Entry<String, GenesisAccount> entry : genesis.state.entrySet()) {
                     Address address = Address.fromHexString(entry.getKey());
-                    // Converter string gigante para Wei (usando notação decimal base 10)
                     Wei balance = Wei.of(new BigInteger(entry.getValue().balance));
                     evm.createEOA(address, balance);
                 }
             }
 
-            // Precisamos dum minter (admin) para os blocos virtuais - vamos usar a conta que envia o deploy
             if (genesis.transactions == null || genesis.transactions.isEmpty()) {
                 System.out.println("Sem transacoes no Genesis JSON.");
                 return;
             }
 
-            Address adminAddress = Address.fromHexString(genesis.transactions.get(0).from);
-            
-            // 2. Executar a Transação 1 (Access Control)
-            GenesisTransaction tx1 = genesis.transactions.get(0);
-            TransactionRunner runner1 = new TransactionRunner(evm.getUpdater(), adminAddress); // using admin as minter
+            // 2. Iterar e Executar Transações de Deploy ou Transfer
+            long currentNonce = 0;
+            for (GenesisTransaction tx : genesis.transactions) {
+                Address sender = Address.fromHexString(tx.from);
+                TransactionRunner runner = new TransactionRunner(evm.getUpdater(), sender); 
 
-            Transaction t1 = new Transaction(
-                    BigInteger.ZERO, // nonce
-                    adminAddress, 
-                    null, // to == null (deploy)
-                    Wei.of(tx1.gasPrice), // gasPrice
-                    Wei.ZERO, Wei.ZERO, // EIP-1559 fees ignorable for now
-                    tx1.gasLimit,
-                    Wei.of(new BigInteger(tx1.value)),
-                    Bytes.fromHexString(tx1.data),
-                    BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO // assinaturas irrelevantes no genesis
-            );
-
-            Address accessControlAddress = runner1.executeContractCreation(t1);
-            if (accessControlAddress == null) {
-                throw new RuntimeException("Falha ao criar o AccessControl no Genesis");
-            }
-            
-            runner1.getUpdater().commit();
-            System.out.println("Access Control Contract gerado no endereco: " + accessControlAddress.toHexString());
-
-            // 3. O Truque do Construtor na Transação 2 (IST Coin)
-            if (genesis.transactions.size() > 1) {
-                GenesisTransaction tx2 = genesis.transactions.get(1);
-                
-                // Fazer padding do endereço do access control com zeros à esquerda até 32 bytes (64 caracteres hexadecimais)
-                String hexAddress = accessControlAddress.toUnprefixedHexString();
-                String paddedAddress = String.format("%64s", hexAddress).replace(' ', '0');
-                
-                // Concatenar ao final do 'data' da transação 2
-                String finalData2 = tx2.data + paddedAddress;
-
-                TransactionRunner runner2 = new TransactionRunner(evm.getUpdater(), adminAddress);
-                Transaction t2 = new Transaction(
-                        BigInteger.ONE, // nonce inc
-                        adminAddress,
-                        null,
-                        Wei.of(tx2.gasPrice),
-                        Wei.ZERO, Wei.ZERO,
-                        tx2.gasLimit,
-                        Wei.of(new BigInteger(tx2.value)),
-                        Bytes.fromHexString(finalData2),
-                        BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO
+                Transaction t = new Transaction(
+                        BigInteger.valueOf(currentNonce++), 
+                        sender, 
+                        tx.to != null ? Address.fromHexString(tx.to) : null,
+                        Wei.of(tx.gasPrice), // gasPrice
+                        Wei.ZERO, Wei.ZERO, // fees
+                        tx.gasLimit,
+                        Wei.of(new BigInteger(tx.value)),
+                        Bytes.fromHexString(tx.data),
+                        BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO // dummy v/r/s at genesis
                 );
 
-                Address istCoinAddress = runner2.executeContractCreation(t2);
-                if (istCoinAddress == null) {
-                    throw new RuntimeException("Falha ao criar o ISTCoin no Genesis");
+                if (tx.to == null) { // Deploy Contract
+                    Address contractAddress = runner.executeContractCreation(t);
+                    if (contractAddress == null) {
+                        throw new RuntimeException("Falha ao criar o contrato no Genesis");
+                    }
+                    System.out.println("Contrato gerado no endereco: " + contractAddress.toHexString());
+                } else { // Normal execution
+                    if (!runner.executeTransaction(t)) {
+                        throw new RuntimeException("Falha ao executar transacao no Genesis");
+                    }
                 }
-                
-                runner2.getUpdater().commit();
-                System.out.println("IST Coin Contract gerado no endereco: " + istCoinAddress.toHexString());
+                runner.getUpdater().commit();
             }
         }
     }

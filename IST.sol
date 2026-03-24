@@ -4,30 +4,15 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /**
- * @title Interface do Contrato de Controlo de Acessos
- * @dev O enunciado exige que o ISTCoin chame um contrato externo para validar transferências.
- */
-interface IAccessControl {
-    function isAllowedToTransfer(address account) external view returns (bool);
-}
-
-/**
  * @title ISTCoin
  * @dev Implementação do token nativo ERC-20 para o projeto DepChain (Fase 2)
  */
 contract ISTCoin is ERC20 {
     
-    // Referência para o contrato de Controlo de Acessos
-    IAccessControl public accessControlContract;
-
     /**
-     * @dev Construtor do contrato.
-     * @param _accessControlAddress O endereço do contrato de Controlo de Acessos já publicado na rede.
+     * @dev Construtor do contrato autónomo.
      */
-    constructor(address _accessControlAddress) ERC20("IST Coin", "IST") {
-        require(_accessControlAddress != address(0), "Endereco de Access Control invalido");
-        accessControlContract = IAccessControl(_accessControlAddress);
-        
+    constructor() ERC20("IST Coin", "IST") {
         // Supply de 100 milhões com 2 casas decimais.
         // Cálculo: 100.000.000 * (10 ^ 2)
         _mint(msg.sender, 100000000 * 10**2);
@@ -54,32 +39,5 @@ contract ISTCoin is ERC20 {
         );
         
         return super.approve(spender, amount);
-    }
-
-    /**
-     * @dev Requisito do guião: Validar com o Access Control antes de um 'transfer'.
-     * Verifica se quem INICIA a transferência tem permissão.
-     */
-    function transfer(address to, uint256 amount) public virtual override returns (bool) {
-        require(
-            accessControlContract.isAllowedToTransfer(_msgSender()),
-            "ISTCoin: Transferencia bloqueada pelo Access Control"
-        );
-        
-        return super.transfer(to, amount);
-    }
-
-    /**
-     * @dev Requisito do guião: Validar com o Access Control antes de um 'transferFrom'.
-     * CORREÇÃO: Deve validar o DONO DOS FUNDOS (from) e não o spender.
-     */
-    function transferFrom(address from, address to, uint256 amount) public virtual override returns (bool) {
-        // Verifica se a conta de origem dos fundos tem permissão
-        require(
-            accessControlContract.isAllowedToTransfer(from),
-            "ISTCoin: Conta origem bloqueada pelo Access Control"
-        );
-        
-        return super.transferFrom(from, to, amount);
     }
 }
