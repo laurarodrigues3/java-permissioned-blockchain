@@ -5,39 +5,40 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 
 import tecnico.depchain.depchain_common.DepchainUtils;
+import tecnico.depchain.depchain_server.blockchain.Block;
 
 public class TreeNode implements Serializable {
 	private byte[] parentHash;
-	private String command;
+	private Block blk;
 	private byte[] ownHash;
 
 	// Transient: not serialized, used for in-memory tree traversal
 	private transient TreeNode parent;
 
-	public TreeNode(TreeNode parent, String command) {
+	public TreeNode(TreeNode parent, Block blk) {
 		this.parent = parent;
 		this.parentHash = parent != null ? parent.getHash() : new byte[32];
-		this.command = command;
+		this.blk = blk;
 
 		calculateHash();
 	}
 
-	public TreeNode(byte[] parentHash, String command) {
+	public TreeNode(byte[] parentHash, Block blk) {
 		this.parent = null;
 		this.parentHash = parentHash;
-		this.command = command;
+		this.blk = blk;
 
 		calculateHash();
 	}
 
 	private void calculateHash()
 	{
-		byte[] cmdBytes = command.getBytes(java.nio.charset.StandardCharsets.UTF_8);
-		ByteBuffer buf = ByteBuffer.allocate(parentHash.length + cmdBytes.length);
+		byte[] txBytes = blk.serialize();
+		ByteBuffer buf = ByteBuffer.allocate(parentHash.length + txBytes.length);
 		buf.put(parentHash);
-		buf.put(cmdBytes);
+		buf.put(txBytes);
 		ownHash = DepchainUtils.sha256(buf.array());
-		System.err.println("TreeNode Hash Calc: parentHash=" + Arrays.toString(parentHash) + " cmd=" + command + " ownHash=" + Arrays.toString(ownHash));
+		System.err.println("TreeNode Hash Calc: parentHash=" + Arrays.toString(parentHash) + " blk=" + blk + " ownHash=" + Arrays.toString(ownHash));
 	}
 
 	/**
@@ -59,6 +60,6 @@ public class TreeNode implements Serializable {
 	public void setParent(TreeNode parent) { this.parent = parent; }
 	public TreeNode getParent() { return parent; }
 	public byte[] getParentHash() { return parentHash; }
-	public String getCommand() { return command; }
+	public Block getBlock() { return blk; }
 	public byte[] getHash() { return ownHash; }
 }

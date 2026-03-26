@@ -9,11 +9,13 @@ import org.hyperledger.besu.evm.account.MutableAccount;
 import org.hyperledger.besu.evm.fluent.EVMExecutor;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 public class TransactionRunner {
 	private WorldUpdater updater;
 	private Address minter;
 
-	// Gas is a unit of computational effort, not a value in Wei (currency). The final cost is gas * gasPrice. Wei unit used later on 
+	// Gas is a unit of computational effort, not a value in Wei (currency). The final cost is gas * gasPrice. Wei unit used later on
 	private final long BASE_FEE_GAS = 21_000L;
 
 	public TransactionRunner(WorldUpdater updater, Address minter) {
@@ -115,7 +117,7 @@ public class TransactionRunner {
 
 		// Refund unused gas to sender
 		sender.setBalance(sender.getBalance().add(refund));
-		
+
 		// Give actual fee to minter
 		minterAccount.setBalance(minterAccount.getBalance().add(actualFee));
 
@@ -143,7 +145,7 @@ public class TransactionRunner {
 
 		// Actual execution on the EVM
 		GasTracer tracer = execute(tx.from(), tx.to(), receiver.getCode(), tx.data(), tx.gasPrice(), gasLimit);
-		
+
 		long remainingGas = Math.max(0, Math.min(gasLimit, tracer.getRemainingGas()));
 
 		// Se a EVM abortou (ex: revert, falha no access control, out of gas)
@@ -160,7 +162,7 @@ public class TransactionRunner {
 
 		// Refund unused gas to sender
 		sender.setBalance(sender.getBalance().add(refund));
-		
+
 		// Give actual fee to minter
 		minterAccount.setBalance(minterAccount.getBalance().add(actualFee));
 
@@ -193,7 +195,7 @@ public class TransactionRunner {
 		executor.tracer(tracer);
 
 		// Set configurations
-		executor.baseFee(Wei.ZERO); 
+		executor.baseFee(Wei.ZERO);
 		executor.gasLimit(gasLimit);
 		executor.gasPriceGWei(gasPrice);
 

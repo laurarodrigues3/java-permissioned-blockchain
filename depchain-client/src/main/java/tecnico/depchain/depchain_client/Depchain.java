@@ -10,9 +10,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
-import tecnico.depchain.depchain_common.messages.StringMessage;
+import tecnico.depchain.depchain_common.messages.TransactionMessage;
 
 enum RequestStatus {
 	SENT,
@@ -39,16 +40,16 @@ public class Depchain {
 		this.numReplicas = remotes.size();
 		this.f = (numReplicas - 1) / 3;
 		// A client requires f+1 matching responses to guarantee at least 1 honest replica processed it
-		this.quorumSize = f + 1; 
+		this.quorumSize = f + 1;
 	}
 
-	public boolean AppendString(String content) {
-		StringMessage msg = new StringMessage(clientId, content);
+	public boolean AppendString(Transaction tx) {
+		TransactionMessage msg = new TransactionMessage(clientId, tx);
 		msg.sign(ownKey);
 		Long seqNum = msg.getSeqNum();
-		
-		synchronized (pendingMessages) { 
-			pendingMessages.put(seqNum, RequestStatus.SENT); 
+
+		synchronized (pendingMessages) {
+			pendingMessages.put(seqNum, RequestStatus.SENT);
 			confirmations.put(seqNum, new java.util.HashSet<>());
 		}
 
@@ -58,10 +59,10 @@ public class Depchain {
 			broadcast.broadcast(msg.serialize());
 
 			synchronized (pendingMessages) {
-				try { 
-					pendingMessages.wait(timeoutMs); 
+				try {
+					pendingMessages.wait(timeoutMs);
 				} catch (InterruptedException e) { /* Ignore */ }
-				
+
 				if (pendingMessages.get(seqNum) != RequestStatus.SENT) {
 					break; // Reached ACCEPTED or REJECTED
 				}

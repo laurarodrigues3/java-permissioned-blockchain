@@ -10,14 +10,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Consumer;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+import tecnico.depchain.depchain_server.blockchain.Block;
+
 public class DepChainService implements ConsensusUpcall {
     private final int replicaID;
     private final int numReplicas;
     private final HotStuff hotStuff;
-	private Consumer<String> onDecide = null;
+	private Consumer<Block> onDecide = null;
 
-    // In-memory array of append-only strings representing the blockchain
-    private final List<String> blockchain = Collections.synchronizedList(new ArrayList<>());
+    // In-memory array of append-only transactions representing the blockchain
+    private final List<Block> blockchain = Collections.synchronizedList(new ArrayList<>());
+
+    private final List<Transaction> pendingTransactions = Collections.synchronizedList(new ArrayList<>());
 
     public DepChainService(
             int replicaID, String host, int basePort, int numReplicas,
@@ -27,6 +32,8 @@ public class DepChainService implements ConsensusUpcall {
         this.numReplicas = numReplicas;
         // Pass "this" as the ConsensusUpcall
         this.hotStuff = new HotStuff(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, thresholdCrypto, this);
+
+        //TODO: Set DepChain timeout, smaller than hotstuff timeout, to gather existing transactions, sort and propose
     }
 
     public void start() {
@@ -41,44 +48,44 @@ public class DepChainService implements ConsensusUpcall {
         this.hotStuff.setBaseTimeout(timeoutMs);
     }
 
-    public void setOnDecide(Consumer<String> callback) {
+    public void setOnDecide(Consumer<Block> callback) {
 		this.onDecide = callback;
 	}
 
-    @Override 
-    public void onDecide(String payload) {
-        blockchain.add(payload);
-        System.out.println("Block decided and added to the blockchain: " + payload);
+    @Override
+    public void onDecide(Block blk) {
+        blockchain.add(blk);
+        System.out.println("Block decided and added to the blockchain: " + blk);
         if (onDecide != null)
-            onDecide(payload);
+            onDecide(blk);
     }
 
     /**
      * Handles a request originating from the client.
-     * Evaluates if this node is the current leader and proposes to consensus.
      */
-   public void handleClientRequest(String requestPayload) {
-    if (this.blockchain.contains(requestPayload)) {
-        System.err.println("[DepChainService-" + replicaID + "] Request ignored. The transaction is already on the blockchain: '" + requestPayload + "'");
-        return;
+    public void handleClientRequest(Transaction requestedTx) {
+        if (blockchainHasTransaction(requestedTx)) {
+            System.err.println("[DepChainService-" + replicaID + "] Request ignored. The transaction is already on the blockchain: '" + requestedTx + "'");
+            return;
+        }
+
+        //Save transaction
+        pendingTransactions.add(requestedTx);
     }
 
-    int currentLeader = hotStuff.getCurrentView() % numReplicas;
-    if (replicaID == currentLeader) {
-        System.err.println("[DepChainService-" + replicaID + "] Proposing client request '" + requestPayload + "' for view " + hotStuff.getCurrentView());
-        this.hotStuff.propose(requestPayload);
-    } else {
-        // In a real application, the client request would be gossiped or redirected to the leader.
-        // For this phase, we just log and ignore.
-        System.err.println("[DepChainService-" + replicaID + "] Ignored client request '" + requestPayload + "' (not the leader for view " + hotStuff.getCurrentView() + ").");
-    }
-}
-
-    public List<String> getBlockchain() {
+    public List<Block> getBlockchain() {
         return new ArrayList<>(blockchain);
     }
 
     public HotStuff getHotStuff() {
         return hotStuff;
+    }
+
+    private boolean blockchainHasTransaction(Transaction tx) {
+        for (Block blk : blockchain){
+            if (blk.transactions().contains(tx))
+                return true;
+        }
+        return false;
     }
 }

@@ -17,7 +17,12 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import org.hyperledger.besu.datatypes.Hash;
+
+import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
+import tecnico.depchain.depchain_server.blockchain.Block;
+import tecnico.depchain.depchain_server.blockchain.BlockHeader;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
 
 public class HotStuff {
@@ -33,18 +38,18 @@ public class HotStuff {
 	private QuorumCertificate lockedQC = null;
 	private TreeNode votedNodeThisView = null;
 
-	private final Map<String, TreeNode> nodeStore = new HashMap<>();
+	private final Map<String, TreeNode> nodeStore = new HashMap<>(); //TODO: Change to Block
 
-	private final List<String> decidedCommands = new ArrayList<>();
-    private final List<String> newlyDecidedThisView = new ArrayList<>();
-	private final BlockingQueue<String> pendingCommands = new LinkedBlockingQueue<>();
+	private final List<Block> decidedBlocks = new ArrayList<>();
+    private final List<Block> newlyDecidedThisView = new ArrayList<>(); //REVIEW: There will only ever be one block decided...
+	private final BlockingQueue<Block> pendingBlocks = new LinkedBlockingQueue<>();
 
 	private final BlockingQueue<Message> messageQueue = new LinkedBlockingQueue<>();
 	private final List<Message> outOfOrderBuffer = new ArrayList<>();
 
-	private Consumer<String> onDecide = null;
-	private final ConsensusUpcall upcall; 
- 
+	private Consumer<Block> onDecide = null;
+	private final ConsensusUpcall upcall;
+
 	// Outgoing message filter for Byzantine testing (Step 5).
 	// Applied before every send/broadcast. Return null to drop the message.
 	// Takes (destinationId, originalMessage) and returns modifiedMessage.
@@ -134,15 +139,15 @@ public class HotStuff {
 		broadcast.close();
 	}
 
-	public void propose(String command) {
-		this.pendingCommands.offer(command);
+	public void propose(Block blk) {
+		this.pendingBlocks.offer(blk);
 	}
 
-	public List<String> getDecidedCommands() {
-		return new ArrayList<>(decidedCommands);
+	public List<Block> getDecidedBlocks() {
+		return new ArrayList<>(decidedBlocks);
 	}
 
-	public void setOnDecide(Consumer<String> callback) {
+	public void setOnDecide(Consumer<Block> callback) {
 		this.onDecide = callback;
 	}
 
@@ -205,14 +210,14 @@ public class HotStuff {
 			msg = filter.apply(-1, msg);
 			if (msg == null) return;
 		}
-		
+
 		if (msg.getMessageSignature() == null) {
 			msg.setMessageSignature(crypto.sign(msg.getSignableBytes()));
 		}
-		
+
 		// Self-delivery
 		messageQueue.offer(msg);
-		
+
 		// Broadcast to others using the native layer
 		broadcast.broadcast(msg.serialize());
 	}
@@ -319,8 +324,8 @@ public class HotStuff {
 		return extendsLocked || higherView;
 	}
 
-	private TreeNode createLeaf(TreeNode parent, String command) {
-		TreeNode leaf = new TreeNode(parent, command);
+	private TreeNode createLeaf(TreeNode parent, Block blk) {
+		TreeNode leaf = new TreeNode(parent, blk);
 		storeNode(leaf);
 		return leaf;
 	}
@@ -388,11 +393,11 @@ public class HotStuff {
 					currentView++;
 					votedNodeThisView = null;
 
-                    List<String> toUpcall = new ArrayList<>(newlyDecidedThisView);
+                    List<Block> toUpcall = new ArrayList<>(newlyDecidedThisView);
                     newlyDecidedThisView.clear();
-                    for (String cmd : toUpcall) {
-                        if (onDecide != null) onDecide.accept(cmd);
-                        if (upcall != null) upcall.onDecide(cmd);
+                    for (Block blk : toUpcall) {
+                        if (onDecide != null) onDecide.accept(blk);
+                        if (upcall != null) upcall.onDecide(blk);
                     }
 				}
 			}
@@ -451,10 +456,10 @@ public class HotStuff {
 		if (parentNode != null)
 			linkParent(parentNode);
 
-		String cmd = waitForCommand();
-		if (cmd == null) return false;
+		Block blk = waitForBlock();
+		if (blk == null) return false;
 
-		TreeNode proposal = createLeaf(parentNode, cmd);
+		TreeNode proposal = createLeaf(parentNode, blk);
 		broadcastMessage(makeMsg(MsgType.PREPARE, proposal, highQC));
 
 		boolean selfVote = safeNode(proposal, highQC);
@@ -548,7 +553,7 @@ public class HotStuff {
 		// Equivocation protection: explicitly fail if already voted for a different proposal in this view
 		if (proposal != null) {
 			if (votedNodeThisView != null && !Arrays.equals(votedNodeThisView.getHash(), proposal.getHash())) {
-				return false; 
+				return false;
 			}
 			votedNodeThisView = proposal;
 		}
@@ -631,24 +636,31 @@ public class HotStuff {
 	}
 
 	/**
-	 * Wait for a command to propose, respecting the view deadline.
-	 * Returns null if no command arrives before the view expires.
+	 * Wait for a block to propose, respecting the view deadline.
+	 * Returns null if no block arrives before the view expires.
 	 */
-	private String waitForCommand() throws InterruptedException {
+	private Block waitForBlock() {
 		long remaining = remainingMs();
 		if (remaining <= 0)
 			return null;
 
-		return pendingCommands.poll(remaining, TimeUnit.MILLISECONDS);
+		try
+		{
+			return pendingBlocks.poll(remaining, TimeUnit.MILLISECONDS);
+		}
+		catch (InterruptedException e)
+		{
+			return null;
+		}
 	}
 
 	private void executeDecision(TreeNode node) {
 		if (node == null)
 			return;
-		String cmd = node.getCommand();
-		if (cmd != null && !decidedCommands.contains(cmd)) {
-			decidedCommands.add(cmd);
-            newlyDecidedThisView.add(cmd);
+		Block blk = node.getBlock();
+		if (blk != null && !decidedBlocks.contains(blk)) {
+			decidedBlocks.add(blk);
+			newlyDecidedThisView.add(blk); //REVIEW: Only one block is decided, this likely does not make sense
 		}
 	}
 }

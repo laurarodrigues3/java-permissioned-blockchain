@@ -1,6 +1,9 @@
 package tecnico.depchain.depchain_server.blockchain;
 
 import com.google.gson.Gson;
+
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
@@ -58,18 +61,18 @@ public class GenesisLoader {
             long currentNonce = 0;
             for (GenesisTransaction tx : genesis.transactions) {
                 Address sender = Address.fromHexString(tx.from);
-                TransactionRunner runner = new TransactionRunner(evm.getUpdater(), sender); 
+                TransactionRunner runner = new TransactionRunner(evm.getUpdater(), sender);
 
                 Transaction t = new Transaction(
-                        BigInteger.valueOf(currentNonce++), 
-                        sender, 
-                        tx.to != null ? Address.fromHexString(tx.to) : null,
-                        Wei.of(tx.gasPrice), // gasPrice
-                        Wei.ZERO, Wei.ZERO, // fees
-                        tx.gasLimit,
-                        Wei.of(new BigInteger(tx.value)),
-                        Bytes.fromHexString(tx.data),
-                        BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO // dummy v/r/s at genesis
+                    BigInteger.valueOf(currentNonce++),
+                    sender,
+                    tx.to != null ? Address.fromHexString(tx.to) : null,
+                    Wei.of(tx.gasPrice), // gasPrice
+                    Wei.ZERO, Wei.ZERO, // fees
+                    tx.gasLimit,
+                    Wei.of(new BigInteger(tx.value)),
+                    Bytes.fromHexString(tx.data),
+                    BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO // dummy v/r/s at genesis
                 );
 
                 if (tx.to == null) { // Deploy Contract

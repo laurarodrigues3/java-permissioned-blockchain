@@ -15,17 +15,19 @@ import java.util.Map;
 import tecnico.depchain.depchain_common.DepchainClient;
 import tecnico.depchain.depchain_common.DepchainMember;
 import tecnico.depchain.depchain_common.Membership;
+import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
-import tecnico.depchain.depchain_common.messages.StringMessage;
+import tecnico.depchain.depchain_common.messages.TransactionMessage;
+import tecnico.depchain.depchain_server.blockchain.Block;
 import tecnico.depchain.depchain_server.hotstuff.CryptoService;
 import tecnico.depchain.depchain_server.hotstuff.DepChainService;
 
 public class Depchain {
 	private static DepChainService service;
 	private static Map<InetSocketAddress, AuthenticatedPerfectLink> links = new HashMap<>();
-	private static Map<String, InetSocketAddress> requestSenderMap = new HashMap<>();
-	private static Map<String, Long> requestIdMap = new HashMap<>();
+	private static Map<Transaction, InetSocketAddress> requestSenderMap = new HashMap<>();
+	private static Map<Transaction, Long> requestIdMap = new HashMap<>();
 
 	public static void main(String[] args)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException, IOException {
@@ -68,7 +70,7 @@ public class Depchain {
 	//Client msg handler
 	private static void rxHandler(byte[] data, InetSocketAddress sender) {
 
-		StringMessage msg = StringMessage.deserialize(data);
+		TransactionMessage msg = TransactionMessage.deserialize(data);
 		if (msg == null) return;
 
 		int clientId = msg.getClientId();
@@ -86,19 +88,22 @@ public class Depchain {
 		//Map response to client
 		synchronized (requestSenderMap)
 		{
-			requestSenderMap.put(msg.getContent(), sender);
-			requestIdMap.put(msg.getContent(), msg.getSeqNum());
+			requestSenderMap.put(msg.getTransaction(), sender);
+			requestIdMap.put(msg.getTransaction(), msg.getSeqNum());
 		}
-		service.handleClientRequest(msg.getContent());
+		service.handleClientRequest(msg.getTransaction());
 
 	}
 
-	private static void onDecide(String command) {
-		long id = requestIdMap.get(command);
-		InetSocketAddress requester = requestSenderMap.get(command);
-		AuthenticatedPerfectLink link = links.get(requester);
+	private static void onDecide(Block blk) {
+		for (Transaction tx : blk.transactions())
+		{
+			long id = requestIdMap.get(tx);
+			InetSocketAddress requester = requestSenderMap.get(tx);
+			AuthenticatedPerfectLink link = links.get(requester);
 
-		ConfirmMessage msg = new ConfirmMessage(id, true);
-		link.transmit(msg.serialize());
+			ConfirmMessage msg = new ConfirmMessage(id, true);
+			link.transmit(msg.serialize());
+		}
 	}
 }

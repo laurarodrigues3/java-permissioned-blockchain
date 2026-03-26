@@ -12,28 +12,30 @@ import java.security.PrivateKey;
 import java.security.PublicKey;
 import java.security.Signature;
 
-public class StringMessage implements Serializable {
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
+public class TransactionMessage implements Serializable {
 	private static long txSeqNum = 0;
 
 	private int clientId;
-	private String content;
+	private Transaction tx;
 	private long seqNum;
 	private byte[] signature;
 
-	public StringMessage(int clientId, String content) {
+	public TransactionMessage(int clientId, Transaction tx) {
 		this.clientId = clientId;
-		this.content = content;
+		this.tx = tx;
 		this.seqNum = txSeqNum++;
 	}
 
-	public StringMessage(String content) {
+	public TransactionMessage(Transaction tx) {
 		this.clientId = -1;
-		this.content = content;
+		this.tx = tx;
 		seqNum = txSeqNum++;
 	}
 
 	public int getClientId() { return clientId; }
-	public String getContent() { return content; }
+	public Transaction getTransaction() { return tx; }
 	public long getSeqNum() { return seqNum; }
 	public byte[] getSignature() { return signature; }
 
@@ -61,10 +63,10 @@ public class StringMessage implements Serializable {
 	}
 
 	private byte[] getSignableBytes() {
-		byte[] contentBytes = content.getBytes();
-		ByteBuffer buffer = ByteBuffer.allocate(8 + contentBytes.length);
+		byte[] transactionBytes = tx.serialize();
+		ByteBuffer buffer = ByteBuffer.allocate(8 + transactionBytes.length);
 		buffer.putLong(seqNum);
-		buffer.put(contentBytes);
+		buffer.put(transactionBytes);
 		return buffer.array();
 	}
 
@@ -83,11 +85,11 @@ public class StringMessage implements Serializable {
 		return byteStream.toByteArray();
 	}
 
-	public static StringMessage deserialize(byte[] data) {
+	public static TransactionMessage deserialize(byte[] data) {
 		ByteArrayInputStream byteStream = new ByteArrayInputStream(data);
 		try {
 			ObjectInputStream objectStream = new ObjectInputStream(byteStream);
-			return (StringMessage)objectStream.readObject();
+			return (TransactionMessage)objectStream.readObject();
 		}
 		catch (IOException e) { return null; }
 		catch (ClassNotFoundException e) { return null; }
