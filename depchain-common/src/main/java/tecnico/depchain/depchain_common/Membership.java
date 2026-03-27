@@ -56,6 +56,8 @@ public class Membership {
 				String pubKeyB64 = props.getProperty("client." + i + ".publickey");
 				PublicKey pubKey = kf.generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(pubKeyB64)));
 				clients[i] = new DepchainClient(new InetSocketAddress(host, port), pubKey);
+				String evmAddr = props.getProperty("client." + i + ".address");
+				if (evmAddr != null) { clients[i].setEvmAddress(evmAddr); }
 			}
 
 			// Load own private key (PKCS#8, Base64-encoded)

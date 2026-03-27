@@ -18,6 +18,11 @@ import tecnico.depchain.depchain_common.Membership;
 import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
 import tecnico.depchain.depchain_common.messages.StringMessage;
+import tecnico.depchain.depchain_common.messages.TransactionMessage;
+import tecnico.depchain.depchain_server.blockchain.EVM;
+import tecnico.depchain.depchain_server.blockchain.IncomingTransactionValidator;
+import tecnico.depchain.depchain_server.blockchain.Mempool;
+import tecnico.depchain.depchain_server.blockchain.Transaction;
 import tecnico.depchain.depchain_server.hotstuff.CryptoService;
 import tecnico.depchain.depchain_server.hotstuff.DepChainService;
 
@@ -26,6 +31,10 @@ public class Depchain {
 	private static Map<InetSocketAddress, AuthenticatedPerfectLink> links = new HashMap<>();
 	private static Map<String, InetSocketAddress> requestSenderMap = new HashMap<>();
 	private static Map<String, Long> requestIdMap = new HashMap<>();
+
+	private static EVM evm;
+	private static Mempool mempool;
+	private static IncomingTransactionValidator validator;
 
 	public static void main(String[] args)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException, IOException {
@@ -52,7 +61,12 @@ public class Depchain {
 		KeyPair ownKeyPair = new KeyPair(publicKeys.get(replicaID), ownKey);
 		CryptoService crypto = new CryptoService(replicaID, ownKeyPair, publicKeys);
 
+		evm = EVM.getInstance();
+		mempool = new Mempool(evm);
+		validator = new IncomingTransactionValidator(mempool);
+
 		service = new DepChainService(replicaID, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null);
+		service.setMempool(mempool);
 		service.setOnDecide(Depchain::onDecide);
 		service.start();
 
@@ -67,6 +81,13 @@ public class Depchain {
 
 	//Client msg handler
 	private static void rxHandler(byte[] data, InetSocketAddress sender) {
+
+		// Try to deserialize as TransactionMessage first
+		TransactionMessage txMsg = TransactionMessage.deserialize(data);
+		if (txMsg != null) {
+			mempool.submitTransaction(txMsg, validator);
+			return;
+		}
 
 		StringMessage msg = StringMessage.deserialize(data);
 		if (msg == null) return;
