@@ -13,7 +13,6 @@ import java.util.Map;
 
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
-import tecnico.depchain.depchain_common.messages.StringMessage;
 import tecnico.depchain.depchain_common.messages.TransactionMessage;
 
 enum RequestStatus {
@@ -72,54 +71,6 @@ public class Depchain {
 		this.currentNonce = serverNonce;
 	}
 
-	// ── Legacy String API (Stage 1 backwards compatibility) ─────────────
-
-	public boolean AppendString(String content) {
-		StringMessage msg = new StringMessage(clientId, content);
-		msg.sign(ownKey);
-		Long seqNum = msg.getSeqNum();
-
-		synchronized (pendingMessages) {
-			pendingMessages.put(seqNum, RequestStatus.SENT);
-			confirmations.put(seqNum, new java.util.HashSet<>());
-		}
-
-		long timeoutMs = 2000; // 2 seconds before retrying
-		int maxRetries = 5;
-		int attempts = 0;
-
-		while (attempts < maxRetries) {
-			broadcast.broadcast(msg.serialize());
-			attempts++;
-
-			synchronized (pendingMessages) {
-				try {
-					pendingMessages.wait(timeoutMs);
-				} catch (InterruptedException e) { /* Ignore */ }
-
-				if (pendingMessages.get(seqNum) != RequestStatus.SENT) {
-					break; // Reached ACCEPTED or REJECTED
-				}
-			}
-			if (attempts < maxRetries) {
-				System.out.println("[Depchain Client] Timeout waiting for f+1 ConfirmMessages. Retrying seqNum=" + seqNum + "...");
-			} else {
-				System.err.println("[Depchain Client] Max retries reached for seqNum=" + seqNum + ". Request failed.");
-			}
-		}
-
-		boolean accepted;
-		synchronized (pendingMessages) {
-			accepted = pendingMessages.get(seqNum) == RequestStatus.ACCEPTED;
-			pendingMessages.remove(seqNum);
-			confirmations.remove(seqNum); // Clean up
-		}
-
-		return accepted;
-	}
-
-	// ── Transaction API (Stage 2) ───────────────────────────────────────
-
 	/**
 	 * Submits a signed transaction to all replicas (fire-and-forget).
 	 * In this intermediate step, the method broadcasts the transaction and returns
@@ -130,7 +81,8 @@ public class Depchain {
 	 * @return The seqNum assigned to this submission
 	 */
 	public boolean submitTransaction(TransactionMessage tx) {
-		tx.sign(ownKey);
+		//tx.sign(ownKey);
+		//FIXME: Trash for now
 		long seqNum = tx.getSeqNum();
 
 		synchronized (pendingMessages) {
@@ -142,8 +94,8 @@ public class Depchain {
 		int maxRetries = 5;
 		int attempts = 0;
 
-		System.out.println("[Depchain Client] Submitted tx seqNum=" + seqNum
-				+ " from=" + tx.getFrom() + " nonce=" + tx.getNonce());
+		//System.out.println("[Depchain Client] Submitted tx seqNum=" + seqNum
+		//		+ " from=" + tx.getFrom() + " nonce=" + tx.getNonce());
 
 		while (attempts < maxRetries) {
 			broadcast.broadcast(tx.serialize());
@@ -186,11 +138,12 @@ public class Depchain {
 	 * @return A ready-to-submit TransactionMessage
 	 */
 	public TransactionMessage createTransfer(String to, String value, long gasLimit, String gasPrice) {
-		if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
-		TransactionMessage tx = new TransactionMessage(
-				clientId, currentNonce, ownAddress, to, gasPrice, gasLimit, value, "");
-		this.currentNonce = this.currentNonce.add(BigInteger.ONE);
-		return tx;
+		//if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
+		//TransactionMessage tx = new TransactionMessage(
+		//		clientId, currentNonce, ownAddress, to, gasPrice, gasLimit, value, "");
+		//this.currentNonce = this.currentNonce.add(BigInteger.ONE);
+		//return tx;
+		return null; //FIXME: Trash for now
 	}
 
 	/**
@@ -203,11 +156,12 @@ public class Depchain {
 	 * @return A ready-to-submit TransactionMessage
 	 */
 	public TransactionMessage createContractCall(String contractAddress, String callData, long gasLimit, String gasPrice) {
-		if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
-		TransactionMessage tx = new TransactionMessage(
-				clientId, currentNonce, ownAddress, contractAddress, gasPrice, gasLimit, "0", callData);
-		this.currentNonce = this.currentNonce.add(BigInteger.ONE);
-		return tx;
+		//if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
+		//TransactionMessage tx = new TransactionMessage(
+		//		clientId, currentNonce, ownAddress, contractAddress, gasPrice, gasLimit, "0", callData);
+		//this.currentNonce = this.currentNonce.add(BigInteger.ONE);
+		//return tx;
+		return null; //FIXME: Trash for now
 	}
 
 	// ── Network Handler ─────────────────────────────────────────────────
