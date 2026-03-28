@@ -12,6 +12,8 @@ import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import org.hyperledger.besu.evm.account.Account;
 
+import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
+import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.messages.TransactionMessage;
 
 /**
@@ -35,7 +37,7 @@ import tecnico.depchain.depchain_common.messages.TransactionMessage;
 public class Mempool {
 
 	// sender → (nonce → entry), TreeMap keeps nonces sorted ascending
-	private final Map<Address, TreeMap<BigInteger, MempoolEntry>> senderQueues = new HashMap<>();
+	private final Map<Address, TreeMap<BigInteger, SignedTransaction>> senderQueues = new HashMap<>();
 
 	// Pending state: tracks what the "next" nonce and available balance would be
 	// if all currently queued transactions were executed.
@@ -60,8 +62,7 @@ public class Mempool {
 		if (!validator.validate(msg)) {
 			return false;
 		}
-		Transaction tx = IncomingTransactionValidator.toTransaction(msg);
-		addTransaction(tx, msg.getSignature());
+		addTransaction(msg.getSignedTransaction());
 		return true;
 	}
 
@@ -75,13 +76,13 @@ public class Mempool {
 	 * @param tx        The validated transaction
 	 * @param signature The Ed25519 signature bytes from the TransactionMessage
 	 */
-	public synchronized void addTransaction(Transaction tx, byte[] signature) {
-		Address sender = tx.from();
-		MempoolEntry entry = new MempoolEntry(tx, signature);
+	public synchronized void addTransaction(SignedTransaction signedTx) {
+		Transaction tx = signedTx.tx();
+		Address sender = signedTx.tx().from();
 
 		// Get or create sender queue
-		TreeMap<BigInteger, MempoolEntry> queue = senderQueues.computeIfAbsent(sender, k -> new TreeMap<>());
-		queue.put(tx.nonce(), entry);
+		TreeMap<BigInteger, SignedTransaction> queue = senderQueues.computeIfAbsent(sender, k -> new TreeMap<>());
+		queue.put(tx.nonce(), signedTx);
 
 		// Update pending nonce (advance to nonce + 1)
 		BigInteger nextNonce = tx.nonce().add(BigInteger.ONE);
@@ -120,7 +121,7 @@ public class Mempool {
 		long cumulativeGas = 0;
 
 		// Work on a deep copy of the queue structure so this is non-destructive
-		Map<Address, TreeMap<BigInteger, MempoolEntry>> workQueues = new HashMap<>();
+		Map<Address, TreeMap<BigInteger, SignedTransaction>> workQueues = new HashMap<>();
 		for (var entry : senderQueues.entrySet()) {
 			workQueues.put(entry.getKey(), new TreeMap<>(entry.getValue()));
 		}
@@ -128,15 +129,15 @@ public class Mempool {
 		while (cumulativeGas < maxGasLimit) {
 			// Find the head with highest gasPrice across all senders
 			Address bestSender = null;
-			MempoolEntry bestEntry = null;
+			SignedTransaction bestEntry = null;
 			Wei bestGasPrice = Wei.ZERO;
 
 			for (var entry : workQueues.entrySet()) {
-				TreeMap<BigInteger, MempoolEntry> queue = entry.getValue();
+				TreeMap<BigInteger, SignedTransaction> queue = entry.getValue();
 				if (queue.isEmpty()) continue;
 
-				MempoolEntry head = queue.firstEntry().getValue();
-				Wei headGasPrice = head.getTransaction().gasPrice();
+				SignedTransaction head = queue.firstEntry().getValue();
+				Wei headGasPrice = head.tx().gasPrice();
 
 				if (headGasPrice.compareTo(bestGasPrice) > 0) {
 					bestSender = entry.getKey();
@@ -147,7 +148,7 @@ public class Mempool {
 
 			if (bestEntry == null) break; // No more candidates
 
-			Transaction bestTx = bestEntry.getTransaction();
+			Transaction bestTx = bestEntry.tx();
 
 			// Check if adding this tx would exceed the gas limit
 			if (cumulativeGas + bestTx.gasLimit() > maxGasLimit) {
@@ -208,7 +209,7 @@ public class Mempool {
 	public synchronized void onBlockCommitted(List<Transaction> executedTxs) {
 		// 1. Remove executed transactions
 		for (Transaction tx : executedTxs) {
-			TreeMap<BigInteger, MempoolEntry> queue = senderQueues.get(tx.from());
+			TreeMap<BigInteger, SignedTransaction> queue = senderQueues.get(tx.from());
 			if (queue != null) {
 				queue.remove(tx.nonce());
 				if (queue.isEmpty()) {
@@ -222,19 +223,19 @@ public class Mempool {
 		pendingBalances.clear();
 
 		// 3. Re-validate remaining transactions per sender
-		Iterator<Map.Entry<Address, TreeMap<BigInteger, MempoolEntry>>> senderIt = senderQueues.entrySet().iterator();
+		Iterator<Map.Entry<Address, TreeMap<BigInteger, SignedTransaction>>> senderIt = senderQueues.entrySet().iterator();
 		while (senderIt.hasNext()) {
-			Map.Entry<Address, TreeMap<BigInteger, MempoolEntry>> senderEntry = senderIt.next();
+			Map.Entry<Address, TreeMap<BigInteger, SignedTransaction>> senderEntry = senderIt.next();
 			Address sender = senderEntry.getKey();
-			TreeMap<BigInteger, MempoolEntry> queue = senderEntry.getValue();
+			TreeMap<BigInteger, SignedTransaction> queue = senderEntry.getValue();
 
 			BigInteger expectedNonce = getCommittedNonce(sender);
 			Wei availableBalance = getCommittedBalance(sender);
 
-			Iterator<Map.Entry<BigInteger, MempoolEntry>> txIt = queue.entrySet().iterator();
+			Iterator<Map.Entry<BigInteger, SignedTransaction>> txIt = queue.entrySet().iterator();
 			while (txIt.hasNext()) {
-				Map.Entry<BigInteger, MempoolEntry> txEntry = txIt.next();
-				Transaction tx = txEntry.getValue().getTransaction();
+				Map.Entry<BigInteger, SignedTransaction> txEntry = txIt.next();
+				Transaction tx = txEntry.getValue().tx();
 
 				// Check nonce continuity
 				if (!tx.nonce().equals(expectedNonce)) {
@@ -279,7 +280,7 @@ public class Mempool {
 	 */
 	public synchronized int totalSize() {
 		int total = 0;
-		for (TreeMap<BigInteger, MempoolEntry> queue : senderQueues.values()) {
+		for (TreeMap<BigInteger, SignedTransaction> queue : senderQueues.values()) {
 			total += queue.size();
 		}
 		return total;

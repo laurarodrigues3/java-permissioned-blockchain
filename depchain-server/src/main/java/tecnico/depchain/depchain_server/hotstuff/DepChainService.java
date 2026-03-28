@@ -52,34 +52,13 @@ public class DepChainService implements ConsensusUpcall {
 		this.onDecide = callback;
 	}
 
-    @Override 
+    @Override
     public void onDecide(String payload) {
         blockchain.add(payload);
         System.out.println("Block decided and added to the blockchain: " + payload);
         if (onDecide != null)
             onDecide(payload);
     }
-
-    /**
-     * Handles a request originating from the client.
-     * Evaluates if this node is the current leader and proposes to consensus.
-     */
-   public void handleClientRequest(String requestPayload) {
-    if (this.blockchain.contains(requestPayload)) {
-        System.err.println("[DepChainService-" + replicaID + "] Request ignored. The transaction is already on the blockchain: '" + requestPayload + "'");
-        return;
-    }
-
-    int currentLeader = hotStuff.getCurrentView() % numReplicas;
-    if (replicaID == currentLeader) {
-        System.err.println("[DepChainService-" + replicaID + "] Proposing client request '" + requestPayload + "' for view " + hotStuff.getCurrentView());
-        this.hotStuff.propose(requestPayload);
-    } else {
-        // In a real application, the client request would be gossiped or redirected to the leader.
-        // For this phase, we just log and ignore.
-        System.err.println("[DepChainService-" + replicaID + "] Ignored client request '" + requestPayload + "' (not the leader for view " + hotStuff.getCurrentView() + ").");
-    }
-}
 
     public List<String> getBlockchain() {
         return new ArrayList<>(blockchain);

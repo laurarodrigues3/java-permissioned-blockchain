@@ -17,12 +17,10 @@ import tecnico.depchain.depchain_common.DepchainMember;
 import tecnico.depchain.depchain_common.Membership;
 import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
-import tecnico.depchain.depchain_common.messages.StringMessage;
 import tecnico.depchain.depchain_common.messages.TransactionMessage;
 import tecnico.depchain.depchain_server.blockchain.EVM;
 import tecnico.depchain.depchain_server.blockchain.IncomingTransactionValidator;
 import tecnico.depchain.depchain_server.blockchain.Mempool;
-import tecnico.depchain.depchain_server.blockchain.Transaction;
 import tecnico.depchain.depchain_server.hotstuff.CryptoService;
 import tecnico.depchain.depchain_server.hotstuff.DepChainService;
 
@@ -81,37 +79,11 @@ public class Depchain {
 
 	//Client msg handler
 	private static void rxHandler(byte[] data, InetSocketAddress sender) {
-
-		// Try to deserialize as TransactionMessage first
 		TransactionMessage txMsg = TransactionMessage.deserialize(data);
-		if (txMsg != null) {
-			mempool.submitTransaction(txMsg, validator);
+		if (txMsg == null)
 			return;
-		}
 
-		StringMessage msg = StringMessage.deserialize(data);
-		if (msg == null) return;
-
-		int clientId = msg.getClientId();
-		if (clientId < 0 || clientId >= Membership.getClients().length) {
-			System.err.println("[Server] Invalid client ID: " + clientId);
-			return;
-		}
-
-		PublicKey clientKey = Membership.getClients()[clientId].getPublicKey();
-		if (!msg.verify(clientKey)) {
-			System.err.println("[Server] Invalid signature for client request from " + clientId);
-			return;
-		}
-
-		//Map response to client
-		synchronized (requestSenderMap)
-		{
-			requestSenderMap.put(msg.getContent(), sender);
-			requestIdMap.put(msg.getContent(), msg.getSeqNum());
-		}
-		service.handleClientRequest(msg.getContent());
-
+		mempool.submitTransaction(txMsg, validator);
 	}
 
 	private static void onDecide(String command) {

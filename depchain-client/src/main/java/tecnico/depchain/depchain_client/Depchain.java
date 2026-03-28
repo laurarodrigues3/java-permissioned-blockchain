@@ -45,7 +45,7 @@ public class Depchain {
 		this.numReplicas = remotes.size();
 		this.f = (numReplicas - 1) / 3;
 		// A client requires f+1 matching responses to guarantee at least 1 honest replica processed it
-		this.quorumSize = f + 1; 
+		this.quorumSize = f + 1;
 	}
 
 	/**
@@ -78,9 +78,9 @@ public class Depchain {
 		StringMessage msg = new StringMessage(clientId, content);
 		msg.sign(ownKey);
 		Long seqNum = msg.getSeqNum();
-		
-		synchronized (pendingMessages) { 
-			pendingMessages.put(seqNum, RequestStatus.SENT); 
+
+		synchronized (pendingMessages) {
+			pendingMessages.put(seqNum, RequestStatus.SENT);
 			confirmations.put(seqNum, new java.util.HashSet<>());
 		}
 
@@ -93,10 +93,10 @@ public class Depchain {
 			attempts++;
 
 			synchronized (pendingMessages) {
-				try { 
-					pendingMessages.wait(timeoutMs); 
+				try {
+					pendingMessages.wait(timeoutMs);
 				} catch (InterruptedException e) { /* Ignore */ }
-				
+
 				if (pendingMessages.get(seqNum) != RequestStatus.SENT) {
 					break; // Reached ACCEPTED or REJECTED
 				}
@@ -133,8 +133,8 @@ public class Depchain {
 		tx.sign(ownKey);
 		long seqNum = tx.getSeqNum();
 
-		synchronized (pendingMessages) { 
-			pendingMessages.put(seqNum, RequestStatus.SENT); 
+		synchronized (pendingMessages) {
+			pendingMessages.put(seqNum, RequestStatus.SENT);
 			confirmations.put(seqNum, new java.util.HashSet<>());
 		}
 
@@ -150,10 +150,10 @@ public class Depchain {
 			attempts++;
 
 			synchronized (pendingMessages) {
-				try { 
-					pendingMessages.wait(timeoutMs); 
+				try {
+					pendingMessages.wait(timeoutMs);
 				} catch (InterruptedException e) { /* Ignore */ }
-				
+
 				if (pendingMessages.get(seqNum) != RequestStatus.SENT) {
 					break; // Reached ACCEPTED or REJECTED
 				}

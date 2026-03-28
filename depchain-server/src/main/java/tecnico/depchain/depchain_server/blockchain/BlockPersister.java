@@ -4,6 +4,8 @@ import com.google.gson.*;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonWriter;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
@@ -210,8 +212,7 @@ public class BlockPersister {
             return new Transaction(
                     nonce, from, to, gasPrice,
                     Wei.ZERO, Wei.ZERO, // maxPriorityFeePerGas, maxFeePerGas (not used in genesis format)
-                    gasLimit, value, data,
-                    BigInteger.ZERO, BigInteger.ZERO, BigInteger.ZERO // v, r, s
+                    gasLimit, value, data
             );
         }
     }

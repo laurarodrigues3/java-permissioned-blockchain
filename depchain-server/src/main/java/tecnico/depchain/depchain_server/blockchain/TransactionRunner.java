@@ -9,6 +9,8 @@ import org.hyperledger.besu.evm.account.MutableAccount;
 import org.hyperledger.besu.evm.fluent.EVMExecutor;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 public class TransactionRunner {
 	private WorldUpdater updater;
 	private Address minter;

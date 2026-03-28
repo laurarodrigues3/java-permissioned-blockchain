@@ -15,6 +15,8 @@ import org.hyperledger.besu.evm.account.MutableAccount;
 import org.hyperledger.besu.evm.fluent.SimpleWorld;
 import org.hyperledger.besu.evm.worldstate.WorldUpdater;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 public class EVM {
 	private static EVM singleton = null;
 

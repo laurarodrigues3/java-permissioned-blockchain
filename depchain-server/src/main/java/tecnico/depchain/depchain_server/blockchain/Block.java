@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
 
+import tecnico.depchain.depchain_common.blockchain.Transaction;
+
 /**
  * Represents a finalized block in the DepChain blockchain.
  *
