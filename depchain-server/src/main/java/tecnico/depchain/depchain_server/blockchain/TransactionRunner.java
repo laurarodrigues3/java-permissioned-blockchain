@@ -13,7 +13,7 @@ public class TransactionRunner {
 	private WorldUpdater updater;
 	private Address minter;
 
-	// Gas is a unit of computational effort, not a value in Wei (currency). The final cost is gas * gasPrice. Wei unit used later on 
+	// Gas is a unit of computational effort, not a value in Wei (currency). The final cost is gas * gasPrice. Wei unit used later on
 	private final long BASE_FEE_GAS = 21_000L;
 
 	public TransactionRunner(WorldUpdater updater, Address minter) {
@@ -29,11 +29,13 @@ public class TransactionRunner {
 		if (tx.to() == null) {
 			return executeContractCreation(tx) != null;
 		}
-		Account destination = updater.get(tx.to());
-		if (destination != null && destination.hasCode())
-			return executeContract(tx);
-		else
-			return executeTransfer(tx);
+
+		if (tx.data() != null)
+			if (!executeContract(tx)) return false;
+		if (tx.value() != Wei.ZERO)
+			if (!executeTransfer(tx)) return false;
+
+		return true;
 	}
 
 	public Address executeContractCreation(Transaction tx) {
@@ -115,7 +117,7 @@ public class TransactionRunner {
 
 		// Refund unused gas to sender
 		sender.setBalance(sender.getBalance().add(refund));
-		
+
 		// Give actual fee to minter
 		minterAccount.setBalance(minterAccount.getBalance().add(actualFee));
 
@@ -143,7 +145,7 @@ public class TransactionRunner {
 
 		// Actual execution on the EVM
 		GasTracer tracer = execute(tx.from(), tx.to(), receiver.getCode(), tx.data(), tx.gasPrice(), gasLimit);
-		
+
 		long remainingGas = Math.max(0, Math.min(gasLimit, tracer.getRemainingGas()));
 
 		// Se a EVM abortou (ex: revert, falha no access control, out of gas)
@@ -160,7 +162,7 @@ public class TransactionRunner {
 
 		// Refund unused gas to sender
 		sender.setBalance(sender.getBalance().add(refund));
-		
+
 		// Give actual fee to minter
 		minterAccount.setBalance(minterAccount.getBalance().add(actualFee));
 
@@ -193,7 +195,7 @@ public class TransactionRunner {
 		executor.tracer(tracer);
 
 		// Set configurations
-		executor.baseFee(Wei.ZERO); 
+		executor.baseFee(Wei.ZERO);
 		executor.gasLimit(gasLimit);
 		executor.gasPriceGWei(gasPrice);
 
