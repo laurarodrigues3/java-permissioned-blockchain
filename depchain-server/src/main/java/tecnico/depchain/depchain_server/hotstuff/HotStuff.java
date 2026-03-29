@@ -23,7 +23,6 @@ import org.hyperledger.besu.datatypes.Address;
 import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_server.blockchain.Block;
-import tecnico.depchain.depchain_server.blockchain.BlockRunner;
 import tecnico.depchain.depchain_server.blockchain.EVM;
 import tecnico.depchain.depchain_server.blockchain.Mempool;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
@@ -61,6 +60,7 @@ public class HotStuff {
 	private Thread protocolThread;
 	private volatile boolean running = false;
 
+	public static final long maxBlockGas = 15_000_000L; //15M is close to ethereum's average target
 	private static final long DEFAULT_TIMEOUT_MS = 5000;
 	private static final long MAX_TIMEOUT_MS = 60000;
 	private long baseTimeoutMs = DEFAULT_TIMEOUT_MS;
@@ -613,6 +613,7 @@ public class HotStuff {
 		Block blk = node.getBlock();
 		if (blk != null && !decidedBlocks.contains(blk)) {
 			decidedBlocks.add(blk);
+			EVM.getInstance().executeBlock(blk, ownAddress, true);
 		}
 	}
 
@@ -625,13 +626,12 @@ public class HotStuff {
 		LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(remaining));
 
 		// Then build block
-		var txs = mempool.getTopTransactions(BlockRunner.maxBlockGas);
+		var txs = mempool.getTopTransactions(maxBlockGas);
 		Block lastBlock = decidedBlocks.getLast();
 		Block blk = new Block(lastBlock == null ? null : lastBlock.getBlockHash(), txs, null);
 
-		BlockRunner runner = new BlockRunner(EVM.getInstance().getUpdater(), ownAddress);
-		if (!runner.dryRunBlock(blk)) //TODO: Instead spam test blocks until it works
-			return null;
+		if (!EVM.getInstance().executeBlock(blk, ownAddress, false))
+			return null; //TODO: Instead spam test blocks until it works
 
 		return blk;
 	}
