@@ -79,29 +79,30 @@ public class EVM {
 	public boolean executeBlock(Block block, Address minter, boolean commit) {
 		TransactionRunner runner = new TransactionRunner(updater.updater(), minter);
 
-		// Register the minter as a known address (receives gas fees)
-		knownAddresses.add(minter);
-
 		// IMPORTANT: The EVM executes transactions in the EXACT order they appear in the block.
 		// Ordering by gasPrice is the Leader's responsibility when constructing the block.
 		// Sorting here would risk BFT state divergence if tie-breaking differs across replicas.
 		for (var tx : block.getTransactions()) {
-			// Register sender and receiver as known addresses
-			if (tx.from() != null) knownAddresses.add(tx.from());
-			if (tx.to() != null) knownAddresses.add(tx.to());
-
-			// For contract creation, pre-register the derived contract address
-			if (tx.to() == null && tx.from() != null) {
-				Address contractAddr = Address.contractAddress(tx.from(), 0);
-				knownAddresses.add(contractAddr);
-			}
-
 			if (!runner.executeTransaction(tx))
 				return false;
 		}
 
-		if (commit)
+		if (commit) {
+			//Register participants
+			knownAddresses.add(minter);
+			for (var tx : block.getTransactions()) {
+				// Register sender and receiver as known addresses
+				if (tx.from() != null) knownAddresses.add(tx.from());
+				if (tx.to() != null) knownAddresses.add(tx.to());
+
+				// For contract creation, pre-register the derived contract address
+				if (tx.to() == null && tx.from() != null) {
+					Address contractAddr = Address.contractAddress(tx.from(), 0);
+					knownAddresses.add(contractAddr);
+				}
+			}
 			runner.getUpdater().commit();
+		}
 
 		return true;
 	}
@@ -109,19 +110,21 @@ public class EVM {
 	public boolean executeTransaction(Transaction tx, Address minter, boolean commit) {
 		TransactionRunner runner = new TransactionRunner(updater.updater(), minter);
 
-		// Register all addresses involved
-		knownAddresses.add(minter);
-		if (tx.from() != null) knownAddresses.add(tx.from());
-		if (tx.to() != null) knownAddresses.add(tx.to());
-		if (tx.to() == null && tx.from() != null) {
-			knownAddresses.add(Address.contractAddress(tx.from(), tx.nonce()));
-		}
-
 		if (!runner.executeTransaction(tx))
 			return false;
 
-		if (commit)
+
+		if (commit) {
+			// Register all addresses involved
+			knownAddresses.add(minter);
+			if (tx.from() != null) knownAddresses.add(tx.from());
+			if (tx.to() != null) knownAddresses.add(tx.to());
+			if (tx.to() == null && tx.from() != null) {
+				knownAddresses.add(Address.contractAddress(tx.from(), tx.nonce()));
+			}
+
 			runner.getUpdater().commit();
+		}
 
 		return true;
 	}

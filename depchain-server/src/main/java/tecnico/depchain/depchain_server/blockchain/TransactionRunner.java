@@ -38,6 +38,8 @@ public class TransactionRunner {
 			return executeContractCreation(tx) != null;
 		}
 
+		//TODO: Validate with checks in IncomingTXValidator
+
 		Account sender = updater.getAccount(tx.from());
 
 		// Nonce check
