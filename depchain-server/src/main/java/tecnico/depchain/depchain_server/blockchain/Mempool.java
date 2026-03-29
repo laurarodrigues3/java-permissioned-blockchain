@@ -44,12 +44,7 @@ public class Mempool {
 	private final Map<Address, BigInteger> pendingNonces = new HashMap<>();
 	private final Map<Address, Wei> pendingBalances = new HashMap<>();
 
-	// Reference to EVM for reading committed state
-	private final EVM evm;
-
-	public Mempool(EVM evm) {
-		this.evm = evm;
-	}
+	public Mempool() { }
 
 	// ── Core Operations ─────────────────────────────────────────────────
 
@@ -289,13 +284,13 @@ public class Mempool {
 	// ── Private Helpers ─────────────────────────────────────────────────
 
 	private BigInteger getCommittedNonce(Address address) {
-		Account account = evm.getUpdater().get(address);
+		Account account = EVM.getInstance().getUpdater().get(address);
 		if (account == null) return BigInteger.ZERO;
 		return BigInteger.valueOf(account.getNonce());
 	}
 
 	private Wei getCommittedBalance(Address address) {
-		Account account = evm.getUpdater().get(address);
+		Account account = EVM.getInstance().getUpdater().get(address);
 		if (account == null) return Wei.ZERO;
 		return account.getBalance();
 	}

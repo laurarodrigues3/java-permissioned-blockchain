@@ -17,14 +17,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
 import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_server.blockchain.Block;
+import tecnico.depchain.depchain_server.blockchain.Mempool;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
 
-//FIXME: Initial newview = 1 on startup?
 public class HotStuff {
-	//TODO: TRASH everything that uses String commands instead of transaction/blocks
 	private final int replicaID;
 	private final int numReplicas;
 	private final int quorumSize; // n - f
@@ -39,9 +39,8 @@ public class HotStuff {
 
 	private final Map<String, TreeNode> nodeStore = new HashMap<>();
 
+    private Mempool mempool;
 	private final List<Block> decidedBlocks = new ArrayList<>();
-    private final List<Block> newlyDecidedThisView = new ArrayList<>(); //REVIEW: Should not be a list, only one block decided per view
-	private final BlockingQueue<String> pendingCommands = new LinkedBlockingQueue<>(); //REVIEW: Should probably be removed, this is the old mempool
 
 	private final BlockingQueue<Message> messageQueue = new LinkedBlockingQueue<>();
 	private final List<Message> outOfOrderBuffer = new ArrayList<>();
@@ -86,6 +85,7 @@ public class HotStuff {
 		this.thresholdCrypto = thresholdCrypto;
 		int f = (numReplicas - 1) / 3;
 		this.quorumSize = numReplicas - f;
+		this.mempool = new Mempool();
 
 		List<InetSocketAddress> locals = new ArrayList<>();
 		List<InetSocketAddress> remotes = new ArrayList<>();
@@ -107,21 +107,6 @@ public class HotStuff {
 		broadcast = new BestEffortBroadcast(this::handleMsg, this::handleMsg, locals, ownKey, remotes, peerKeys);
 	}
 
-	public HotStuff(
-			int replicaID, String host, int basePort, int numReplicas,
-			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto, ThresholdCrypto thresholdCrypto)
-			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		this(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, thresholdCrypto, null);
-	}
-
-	public HotStuff(
-			int replicaID, String host, int basePort, int numReplicas,
-			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto)
-			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
-		this(replicaID, host, basePort, numReplicas, ownKey, publicKeys, crypto, null, null);
-	}
-
-
 	public void start() {
 		running = true;
 		protocolThread = new Thread(this::protocolLoop, "HotStuff-" + replicaID);
@@ -138,8 +123,8 @@ public class HotStuff {
 		broadcast.close();
 	}
 
-	public void propose(String command) {
-		this.pendingCommands.offer(command);
+	public void propose(SignedTransaction signedTx) {
+		mempool.addTransaction(signedTx);
 	}
 
 	public List<Block> getDecidedBlocks() {
@@ -235,6 +220,7 @@ public class HotStuff {
 	private Message pullMessage(MsgType type, int viewNumber) throws InterruptedException {
 		for (int i = 0; i < outOfOrderBuffer.size(); i++) {
 			Message msg = outOfOrderBuffer.get(i);
+			//FIXME: This is a time bomb, why are we modding the iterated list???
 			if (msg.getType() == type && msg.getViewNumber() == viewNumber) {
 				return outOfOrderBuffer.remove(i);
 			}
@@ -366,12 +352,11 @@ public class HotStuff {
 
 	private void protocolLoop() {
 		// Bootstrap: every replica sends NEW_VIEW(viewNumber=0, qc=null) to View 1's leader
-		sendInitialNewView();
+		sendNewViewToNextLeader();
 
 		while (running) {
 			startViewTimer();
 			boolean viewSucceeded = false;
-            newlyDecidedThisView.clear();
 
 			try {
 				if (isLeader()) {
@@ -393,14 +378,10 @@ public class HotStuff {
 					currentView++;
 					votedNodeThisView = null;
 
-					//REVIEW: Probably should only call once since there will only be one decision per view
-                    List<Block> toUpcall = new ArrayList<>(newlyDecidedThisView);
-                    newlyDecidedThisView.clear();
-                    for (Block blk : toUpcall) {
-						//REVIEW: Why two callbacks?
-                        if (onDecide != null) onDecide.accept(blk);
-                        if (upcall != null) upcall.onDecide(blk);
-                    }
+                    Block decidedThisView = decidedBlocks.getLast();
+					//REVIEW: Why two callbacks?
+					if (onDecide != null) onDecide.accept(decidedThisView);
+					if (upcall != null) upcall.onDecide(decidedThisView);
 				}
 			}
 		}
@@ -447,10 +428,10 @@ public class HotStuff {
 		if (parentNode != null)
 			linkParent(parentNode);
 
-		String cmd = waitForCommand();
-		if (cmd == null) return false;
+		Block blk = waitForBlock(); //TODO: Block building logic
+		if (blk == null) return false;
 
-		TreeNode proposal = createLeaf(parentNode, cmd);
+		TreeNode proposal = createLeaf(parentNode, blk);
 		broadcastMessage(makeMsg(MsgType.PREPARE, proposal, highQC));
 
 		boolean selfVote = safeNode(proposal, highQC);
@@ -632,7 +613,6 @@ public class HotStuff {
 		Block blk = node.getBlock();
 		if (blk != null && !decidedBlocks.contains(blk)) {
 			decidedBlocks.add(blk);
-            newlyDecidedThisView.add(blk);
 		}
 	}
 }

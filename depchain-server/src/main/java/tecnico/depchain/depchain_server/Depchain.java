@@ -19,23 +19,16 @@ import tecnico.depchain.depchain_common.links.AuthenticatedPerfectLink;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
 import tecnico.depchain.depchain_common.messages.TransactionMessage;
 import tecnico.depchain.depchain_server.blockchain.Block;
-import tecnico.depchain.depchain_server.blockchain.EVM;
-import tecnico.depchain.depchain_server.blockchain.IncomingTransactionValidator;
-import tecnico.depchain.depchain_server.blockchain.Mempool;
 import tecnico.depchain.depchain_server.hotstuff.CryptoService;
-import tecnico.depchain.depchain_server.hotstuff.DepChainService;
+import tecnico.depchain.depchain_server.hotstuff.HotStuff;
 
 public class Depchain {
-	//TODO: TRASH everything that uses String commands instead of transaction/blocks
-	private static DepChainService service;
 	private static Map<InetSocketAddress, AuthenticatedPerfectLink> links = new HashMap<>();
 	//FIXME: Must rewrite to move feature to mempool (since this we get blocks and must map transactions)
 	private static Map<String, InetSocketAddress> requestSenderMap = new HashMap<>();
 	private static Map<String, Long> requestIdMap = new HashMap<>();
 
-	private static EVM evm;
-	private static Mempool mempool;
-	private static IncomingTransactionValidator validator;
+	private static HotStuff hotStuff;
 
 	public static void main(String[] args)
 		throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException, IOException {
@@ -62,14 +55,9 @@ public class Depchain {
 		KeyPair ownKeyPair = new KeyPair(publicKeys.get(replicaID), ownKey);
 		CryptoService crypto = new CryptoService(replicaID, ownKeyPair, publicKeys);
 
-		evm = EVM.getInstance();
-		mempool = new Mempool(evm);
-		validator = new IncomingTransactionValidator(mempool);
-
-		service = new DepChainService(replicaID, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null);
-		service.setMempool(mempool);
-		service.setOnDecide(Depchain::onDecide);
-		service.start();
+		hotStuff = new HotStuff(replicaID, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null, null);
+		hotStuff.setOnDecide(Depchain::onDecide);
+		hotStuff.start();
 
 		for (DepchainClient cli : clients) {
 			InetSocketAddress addr = cli.getAddress();
@@ -86,7 +74,8 @@ public class Depchain {
 		if (txMsg == null)
 			return;
 
-		mempool.submitTransaction(txMsg, validator);
+		hotStuff.propose(txMsg.getSignedTransaction());
+		//TODO: Map response or set in mempool
 	}
 
 	private static void onDecide(Block blk) {
