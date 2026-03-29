@@ -38,13 +38,17 @@ public class TransactionRunner {
 			return executeContractCreation(tx) != null;
 		}
 
-		//TODO: Validate with checks in IncomingTXValidator
-
 		Account sender = updater.getAccount(tx.from());
 
 		// Nonce check
 		if (tx.nonce() != sender.getNonce() + 1)
 			return false;
+
+		//TODO: Validate:
+		// - signedTransaction
+		// - from() exists
+		// - Balances
+		// - Non-zero gas
 
 		if (tx.data() != null)
 			if (!executeContract(tx)) return false;

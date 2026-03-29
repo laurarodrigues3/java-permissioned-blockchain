@@ -2,14 +2,12 @@ package tecnico.depchain.depchain_server.blockchain;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
-import org.hyperledger.besu.evm.account.Account;
 
 import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
 import tecnico.depchain.depchain_common.blockchain.Transaction;
@@ -34,13 +32,9 @@ import tecnico.depchain.depchain_common.blockchain.Transaction;
  */
 public class Mempool {
 
+	//FIXME: Should allow to receive multiple transactions with same nonce, gas will sort them, once one is executed, the other is automatically reject by the runner
 	// sender → (nonce → entry), TreeMap keeps nonces sorted ascending
 	private final Map<Address, TreeMap<Long, SignedTransaction>> senderQueues = new HashMap<>();
-
-	// Pending state: tracks what the "next" nonce and available balance would be
-	// if all currently queued transactions were executed.
-	private final Map<Address, Long> pendingNonces = new HashMap<>();
-	private final Map<Address, Wei> pendingBalances = new HashMap<>();
 
 	public Mempool() { }
 
@@ -60,22 +54,6 @@ public class Mempool {
 		// Get or create sender queue
 		TreeMap<Long, SignedTransaction> queue = senderQueues.computeIfAbsent(sender, k -> new TreeMap<>());
 		queue.put(tx.nonce(), signedTx);
-
-		// Update pending nonce (advance to nonce + 1)
-		long nextNonce = tx.nonce() + 1;
-		Long currentPending = pendingNonces.get(sender);
-		if (currentPending == null || nextNonce > currentPending) {
-			pendingNonces.put(sender, nextNonce);
-		}
-
-		// Update pending balance (subtract gasPrice × gasLimit + value)
-		Wei gasCost = tx.gasPrice().multiply(Wei.of(tx.gasLimit()));
-		Wei totalCost = gasCost.add(tx.value());
-		Wei currentBalance = pendingBalances.get(sender);
-		if (currentBalance == null) {
-			currentBalance = getCommittedBalance(sender);
-		}
-		pendingBalances.put(sender, currentBalance.subtract(totalCost));
 
 		System.out.println("[Mempool] Added tx from " + sender.toHexString()
 				+ " nonce=" + tx.nonce() + " gasPrice=" + tx.gasPrice()
@@ -145,34 +123,6 @@ public class Mempool {
 		return result;
 	}
 
-	// ── Pending State Queries ───────────────────────────────────────────
-
-	/**
-	 * Returns the next expected nonce for an address.
-	 * If the address has pending transactions, returns the next nonce after the last pending tx.
-	 * Otherwise returns the committed nonce from the EVM.
-	 */
-	public synchronized long getPendingNonce(Address address) {
-		Long pending = pendingNonces.get(address);
-		if (pending != null) {
-			return pending.longValue();
-		}
-		return getCommittedNonce(address);
-	}
-
-	/**
-	 * Returns the available pending balance for an address.
-	 * If the address has pending transactions, returns the balance after deducting
-	 * all pending gas costs. Otherwise returns the committed balance from the EVM.
-	 */
-	public synchronized Wei getPendingBalance(Address address) {
-		Wei pending = pendingBalances.get(address);
-		if (pending != null) {
-			return pending;
-		}
-		return getCommittedBalance(address);
-	}
-
 	// ── Post-Block Cleanup ──────────────────────────────────────────────
 
 	/**
@@ -195,58 +145,6 @@ public class Mempool {
 			}
 		}
 
-		// 2. Reset all pending state from EVM committed state
-		pendingNonces.clear();
-		pendingBalances.clear();
-
-		// 3. Re-validate remaining transactions per sender
-		Iterator<Map.Entry<Address, TreeMap<Long, SignedTransaction>>> senderIt = senderQueues.entrySet().iterator();
-		while (senderIt.hasNext()) {
-			Map.Entry<Address, TreeMap<Long, SignedTransaction>> senderEntry = senderIt.next();
-			Address sender = senderEntry.getKey();
-			TreeMap<Long, SignedTransaction> queue = senderEntry.getValue();
-
-			Long expectedNonce = getCommittedNonce(sender);
-			Wei availableBalance = getCommittedBalance(sender);
-
-			Iterator<Map.Entry<Long, SignedTransaction>> txIt = queue.entrySet().iterator();
-			while (txIt.hasNext()) {
-				Map.Entry<Long, SignedTransaction> txEntry = txIt.next();
-				Transaction tx = txEntry.getValue().tx();
-
-				// Check nonce continuity
-				if (tx.nonce() != expectedNonce) {
-					// Nonce gap or mismatch — evict this and all subsequent txs from this sender
-					System.out.println("[Mempool] Evicting tx nonce=" + tx.nonce()
-							+ " from " + sender.toHexString() + " (expected nonce " + expectedNonce + ")");
-					txIt.remove();
-					continue;
-				}
-
-				// Check balance
-				Wei gasCost = tx.gasPrice().multiply(Wei.of(tx.gasLimit()));
-				Wei totalCost = gasCost.add(tx.value());
-				if (availableBalance.lessThan(totalCost)) {
-					System.out.println("[Mempool] Evicting tx nonce=" + tx.nonce()
-							+ " from " + sender.toHexString() + " (insufficient balance)");
-					txIt.remove();
-					continue;
-				}
-
-				// Valid — update pending state
-				expectedNonce = expectedNonce + 1;
-				availableBalance = availableBalance.subtract(totalCost);
-			}
-
-			if (queue.isEmpty()) {
-				senderIt.remove();
-			} else {
-				// Update pending state for this sender
-				pendingNonces.put(sender, expectedNonce);
-				pendingBalances.put(sender, availableBalance);
-			}
-		}
-
 		System.out.println("[Mempool] Post-block cleanup done. Remaining txs: " + totalSize());
 	}
 
@@ -259,19 +157,5 @@ public class Mempool {
 			total += queue.size();
 		}
 		return total;
-	}
-
-	// ── Private Helpers ─────────────────────────────────────────────────
-
-	private Long getCommittedNonce(Address address) {
-		Account account = EVM.getInstance().getUpdater().get(address);
-		if (account == null) return Long.valueOf(0);
-		return account.getNonce();
-	}
-
-	private Wei getCommittedBalance(Address address) {
-		Account account = EVM.getInstance().getUpdater().get(address);
-		if (account == null) return Wei.ZERO;
-		return account.getBalance();
 	}
 }
