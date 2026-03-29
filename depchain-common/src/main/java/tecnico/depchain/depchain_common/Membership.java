@@ -15,6 +15,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Properties;
 
+import org.hyperledger.besu.datatypes.Address;
+
 public class Membership {
 	private static DepchainMember[] members;
 	private static DepchainClient[] clients;
@@ -44,7 +46,8 @@ public class Membership {
 				int port = Integer.parseInt(props.getProperty("member." + i + ".port"));
 				String pubKeyB64 = props.getProperty("member." + i + ".publickey");
 				PublicKey pubKey = kf.generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(pubKeyB64)));
-				members[i] = new DepchainMember(new InetSocketAddress(host, port), pubKey);
+				Address depchainAddress = Address.fromHexString(props.getProperty("member."+i+".depchainAddress"));
+				members[i] = new DepchainMember(new InetSocketAddress(host, port), pubKey, depchainAddress);
 			}
 
 			// Load clients
@@ -100,7 +103,7 @@ public class Membership {
 		checkLoaded();
 		List<InetSocketAddress> addresses = new ArrayList<>(members.length);
 		for (DepchainMember member : members) {
-			addresses.add(member.getAddress());
+			addresses.add(member.getNetAddress());
 		}
 		return addresses;
 	}

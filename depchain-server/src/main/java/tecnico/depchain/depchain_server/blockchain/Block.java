@@ -23,7 +23,8 @@ public class Block implements Serializable {
     private String blockHash;
     private String previousBlockHash;
     private List<Transaction> transactions;
-    private TreeMap<String, AccountState> state; // TreeMap guarantees sorted keys for deterministic hashing
+    private TreeMap<String, AccountState> state; //TODO: Nuke and replace with WorldState, implement JSON dumping for it
+    // Will require address, balance, nonce, code, storage and any other state you may remember
 
     /** Default constructor for Gson deserialization. */
     public Block() {

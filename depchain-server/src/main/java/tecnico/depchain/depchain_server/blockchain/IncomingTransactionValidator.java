@@ -40,6 +40,8 @@ public class IncomingTransactionValidator {
 	 * @return {@code true} if the transaction passes all checks and can be added to the Mempool
 	 */
 	public boolean validate(TransactionMessage msg) {
+		//TODO: Move this logic somwhere better
+
 		// Extract the Transaction from the SignedTransaction envelope
 		Transaction tx = msg.getSignedTransaction().tx();
 

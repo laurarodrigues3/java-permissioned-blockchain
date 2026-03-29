@@ -14,17 +14,22 @@ import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import org.hyperledger.besu.datatypes.Address;
+
 import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
-import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_server.blockchain.Block;
+import tecnico.depchain.depchain_server.blockchain.BlockRunner;
+import tecnico.depchain.depchain_server.blockchain.EVM;
 import tecnico.depchain.depchain_server.blockchain.Mempool;
 import tecnico.depchain.depchain_server.hotstuff.Message.MsgType;
 
 public class HotStuff {
+	private final Address ownAddress;
 	private final int replicaID;
 	private final int numReplicas;
 	private final int quorumSize; // n - f
@@ -75,10 +80,11 @@ public class HotStuff {
 	 * @param upcall          Upcall for notifying the application layer on DECIDE completion
 	 */
 	public HotStuff(
-			int replicaID, String host, int basePort, int numReplicas,
+			int replicaID, Address ownAddress, String host, int basePort, int numReplicas,
 			PrivateKey ownKey, List<PublicKey> publicKeys, CryptoService crypto, ThresholdCrypto thresholdCrypto, ConsensusUpcall upcall)
 			throws SocketException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
 		this.replicaID = replicaID;
+		this.ownAddress = ownAddress;
 		this.upcall = upcall;
 		this.numReplicas = numReplicas;
 		this.crypto = crypto;
@@ -145,11 +151,9 @@ public class HotStuff {
 		this.viewTimeoutMs = timeoutMs;
 	}
 
-
 	public void setOutgoingFilter(BiFunction<Integer, Message, Message> filter) {
 		this.outgoingFilter = filter;
 	}
-
 
 	private void handleMsg(byte[] data, InetSocketAddress remote) {
 		byte[] msgBytes = new byte[data.length - 1];
@@ -207,15 +211,18 @@ public class HotStuff {
 		broadcast.broadcast(msg.serialize());
 	}
 
-
 	private void startViewTimer() {
 		viewDeadline = System.currentTimeMillis() + viewTimeoutMs;
 	}
 
-	private long remainingMs() {
+	private long remainingViewMs() {
 		return Math.max(0, viewDeadline - System.currentTimeMillis());
 	}
 
+	// Tighter timing to propose blocks with present transactions
+	private long remainingBlockMs() {
+		return remainingViewMs() - 500; //Arbitrary value
+	}
 
 	private Message pullMessage(MsgType type, int viewNumber) throws InterruptedException {
 		for (int i = 0; i < outOfOrderBuffer.size(); i++) {
@@ -226,7 +233,7 @@ public class HotStuff {
 			}
 		}
 		while (true) {
-			long remaining = remainingMs();
+			long remaining = remainingViewMs();
 			if (remaining <= 0)
 				return null;
 
@@ -299,7 +306,6 @@ public class HotStuff {
 		return res;
 	}
 
-
 	private boolean safeNode(TreeNode node, QuorumCertificate qc) {
 		if (lockedQC == null)
 			return true;
@@ -349,7 +355,6 @@ public class HotStuff {
 		}
 	}
 
-
 	private void protocolLoop() {
 		// Bootstrap: every replica sends NEW_VIEW(viewNumber=0, qc=null) to View 1's leader
 		sendNewViewToNextLeader();
@@ -398,6 +403,7 @@ public class HotStuff {
 
 	/** @return true if the view completed successfully, false on timeout */
 	private boolean runLeaderPhase() throws InterruptedException {
+
 		QuorumCertificate highQC = null;
 
 		// Always collect n-f NEW_VIEW messages (including View 1)
@@ -512,7 +518,6 @@ public class HotStuff {
 	/** @return true if the view completed successfully, false on timeout */
 	private boolean runReplicaPhase() throws InterruptedException {
 		int leader = getLeader(currentView);
-
 		// === PREPARE phase (replica) ===
 		Message prepareMsg = pullMessage(MsgType.PREPARE, currentView);
 		if (prepareMsg == null) return false;
@@ -614,5 +619,25 @@ public class HotStuff {
 		if (blk != null && !decidedBlocks.contains(blk)) {
 			decidedBlocks.add(blk);
 		}
+	}
+
+	private Block waitForBlock() {
+		long remaining = remainingBlockMs();
+		if (remaining <= 0)
+			return null;
+
+		// Wait as long as possible
+		LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(remaining));
+
+		// Then build block
+		var txs = mempool.getTopTransactions(BlockRunner.maxBlockGas);
+		Block lastBlock = decidedBlocks.getLast();
+		Block blk = new Block(lastBlock == null ? null : lastBlock.getBlockHash(), txs, null);
+
+		BlockRunner runner = new BlockRunner(EVM.getInstance().getUpdater(), ownAddress);
+		if (!runner.dryRunBlock(blk)) //TODO: Instead spam test blocks until it works
+			return null;
+
+		return blk;
 	}
 }

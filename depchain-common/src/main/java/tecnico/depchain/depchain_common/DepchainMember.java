@@ -3,15 +3,20 @@ package tecnico.depchain.depchain_common;
 import java.net.InetSocketAddress;
 import java.security.PublicKey;
 
-public class DepchainMember {
-	private InetSocketAddress address;
-	private PublicKey publicKey;
+import org.hyperledger.besu.datatypes.Address;
 
-	public DepchainMember(InetSocketAddress address, PublicKey publicKey) {
-		this.address = address;
+public class DepchainMember {
+	private InetSocketAddress netAddress;
+	private PublicKey publicKey;
+	private Address depchainAddress;
+
+	public DepchainMember(InetSocketAddress netAddress, PublicKey publicKey, Address depchainAddress) {
+		this.netAddress = netAddress;
 		this.publicKey = publicKey;
+		this.depchainAddress = depchainAddress;
 	}
 
 	public PublicKey getPublicKey() { return publicKey; }
-	public InetSocketAddress getAddress() { return address; }
+	public InetSocketAddress getNetAddress() { return netAddress; }
+	public Address getDepchainAddress() { return depchainAddress; }
 }

@@ -8,6 +8,7 @@ import tecnico.depchain.depchain_common.blockchain.Transaction;
 public class BlockRunner {
 	private final WorldUpdater updater;
 	private final Address minter;
+	public static final long maxBlockGas = 15_000_000L; //15M is close to ethereum's average target
 
 	public BlockRunner(WorldUpdater updater, Address minter) {
 		this.updater = updater;

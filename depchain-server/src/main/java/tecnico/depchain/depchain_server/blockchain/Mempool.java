@@ -13,7 +13,6 @@ import org.hyperledger.besu.evm.account.Account;
 
 import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
 import tecnico.depchain.depchain_common.blockchain.Transaction;
-import tecnico.depchain.depchain_common.messages.TransactionMessage;
 
 /**
  * Transaction pool with per-sender nonce ordering and global gasPrice selection.
@@ -48,24 +47,8 @@ public class Mempool {
 	// ── Core Operations ─────────────────────────────────────────────────
 
 	/**
-	 * Atomically validates and adds a transaction to the mempool.
-	 * This prevents race conditions where multiple UDP receiver threads pass validation
-	 * before any of them deducts the pending balance.
-	 */
-	public synchronized boolean submitTransaction(TransactionMessage msg, IncomingTransactionValidator validator) {
-		if (!validator.validate(msg)) {
-			return false;
-		}
-		addTransaction(msg.getSignedTransaction());
-		return true;
-	}
-
-	/**
 	 * Adds a validated transaction to the mempool.
 	 * Updates pending nonce and balance for the sender.
-	 * <p>
-	 * <b>Precondition:</b> The transaction must have already passed
-	 * {@link IncomingTransactionValidator} checks.
 	 *
 	 * @param tx        The validated transaction
 	 * @param signature The Ed25519 signature bytes from the TransactionMessage

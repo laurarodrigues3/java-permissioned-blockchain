@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.hyperledger.besu.datatypes.Address;
+
 import tecnico.depchain.depchain_common.DepchainClient;
 import tecnico.depchain.depchain_common.DepchainMember;
 import tecnico.depchain.depchain_common.Membership;
@@ -50,13 +52,15 @@ public class Depchain {
 		PrivateKey ownKey = Membership.getOwnPrivateKey();
 		List<PublicKey> publicKeys = Membership.getMemberPublicKeys();
 
-		InetSocketAddress local = new InetSocketAddress("0.0.0.0", members[replicaID].getAddress().getPort());
+		InetSocketAddress local = new InetSocketAddress("0.0.0.0", members[replicaID].getNetAddress().getPort());
 
 		// Build CryptoService from the loaded PKI
 		KeyPair ownKeyPair = new KeyPair(publicKeys.get(replicaID), ownKey);
 		CryptoService crypto = new CryptoService(replicaID, ownKeyPair, publicKeys);
 
-		hotStuff = new HotStuff(replicaID, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null, null);
+		Address ownAddress = members[replicaID].getDepchainAddress();
+
+		hotStuff = new HotStuff(replicaID, ownAddress, "localhost", 42069, numReplicas, ownKey, publicKeys, crypto, null, null);
 		hotStuff.setOnDecide(Depchain::onDecide);
 		hotStuff.start();
 
