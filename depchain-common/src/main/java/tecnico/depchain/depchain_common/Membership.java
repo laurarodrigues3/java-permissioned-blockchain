@@ -13,6 +13,7 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import org.hyperledger.besu.datatypes.Address;
@@ -20,6 +21,8 @@ import org.hyperledger.besu.datatypes.Address;
 public class Membership {
 	private static DepchainMember[] members;
 	private static DepchainClient[] clients;
+	private static Map<Address, PublicKey> accountPubKeyMap;
+	//TODO: Add account private keys as well?
 	private static PrivateKey ownPrivateKey;
 	private static boolean loaded = false;
 
@@ -65,6 +68,8 @@ public class Membership {
 			String privKeyB64 = props.getProperty("node." + myId + ".privatekey");
 			ownPrivateKey = kf.generatePrivate(new PKCS8EncodedKeySpec(Base64.getDecoder().decode(privKeyB64)));
 
+			//TODO: Add loading of depchain accounts
+
 			loaded = true;
 		} catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
 			throw new RuntimeException("Failed to parse Ed25519 keys from config", e);
@@ -90,6 +95,10 @@ public class Membership {
 	public static DepchainClient[] getClients() {
 		checkLoaded();
 		return clients;
+	}
+
+	public static PublicKey getAccountPublicKey(Address address) {
+		return accountPubKeyMap.get(address);
 	}
 
 	public static PrivateKey getOwnPrivateKey() {

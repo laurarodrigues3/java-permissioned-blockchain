@@ -4,8 +4,8 @@ import java.net.InetSocketAddress;
 import java.security.PublicKey;
 
 public class DepchainClient {
-	private InetSocketAddress address;
-	private PublicKey publicKey;
+	private final InetSocketAddress address;
+	private final PublicKey publicKey;
 
 	public DepchainClient(InetSocketAddress address, PublicKey publicKey) {
 		this.address = address;

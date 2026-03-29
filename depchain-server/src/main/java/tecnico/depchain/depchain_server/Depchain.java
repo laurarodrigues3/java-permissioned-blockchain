@@ -81,7 +81,9 @@ public class Depchain {
 			return;
 
 		SignedTransaction signedTx = txMsg.getSignedTransaction();
-		//TODO: Verify msg
+		Address senderAddress = signedTx.tx().from();
+		if (!signedTx.verify(Membership.getAccountPublicKey(senderAddress)))
+			return;
 
 		hotStuff.propose(signedTx);
 

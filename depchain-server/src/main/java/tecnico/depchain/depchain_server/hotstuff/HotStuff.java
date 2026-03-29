@@ -201,11 +201,11 @@ public class HotStuff {
 			msg.setMessageSignature(crypto.sign(msg.getSignableBytes()));
 		}
 
-		// Self-delivery
-		messageQueue.offer(msg);
-
 		// Broadcast to others using the native layer
 		broadcast.broadcast(msg.serialize());
+
+		// Self-delivery
+		messageQueue.offer(msg);
 	}
 
 	private void startViewTimer() {
@@ -224,7 +224,6 @@ public class HotStuff {
 	private Message pullMessage(MsgType type, int viewNumber) throws InterruptedException {
 		for (int i = 0; i < outOfOrderBuffer.size(); i++) {
 			Message msg = outOfOrderBuffer.get(i);
-			//FIXME: This is a time bomb, why are we modding the iterated list???
 			if (msg.getType() == type && msg.getViewNumber() == viewNumber) {
 				return outOfOrderBuffer.remove(i);
 			}

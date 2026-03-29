@@ -6,9 +6,9 @@ import java.security.PublicKey;
 import org.hyperledger.besu.datatypes.Address;
 
 public class DepchainMember {
-	private InetSocketAddress netAddress;
-	private PublicKey publicKey;
-	private Address depchainAddress;
+	private final InetSocketAddress netAddress;
+	private final PublicKey publicKey;
+	private final Address depchainAddress;
 
 	public DepchainMember(InetSocketAddress netAddress, PublicKey publicKey, Address depchainAddress) {
 		this.netAddress = netAddress;
