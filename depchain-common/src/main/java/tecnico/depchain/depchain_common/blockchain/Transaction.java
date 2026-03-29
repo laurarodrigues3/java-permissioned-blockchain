@@ -4,6 +4,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 
 import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
@@ -34,4 +35,20 @@ public record Transaction(
 
 		return byteStream.toByteArray();
 	}
+
+	/**
+     * Produces a canonical byte representation of a Transaction for hashing.
+     * This must be deterministic and include all semantically relevant fields.
+     */
+    public byte[] canonicalBytes() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(nonce).append('|');
+        sb.append(from != null ? from.toHexString() : "null").append('|');
+        sb.append(to != null ? to.toHexString() : "null").append('|');
+        sb.append(gasPrice != null ? gasPrice.toBigInteger().toString() : "0").append('|');
+        sb.append(gasLimit).append('|');
+        sb.append(value != null ? value.toBigInteger().toString() : "0").append('|');
+        sb.append(data != null ? data.toHexString() : "");
+        return sb.toString().getBytes(StandardCharsets.UTF_8);
+    }
 }

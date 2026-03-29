@@ -81,7 +81,7 @@ public class Block implements Serializable {
 
             // 2. Transactions (deterministic: the list order is the execution order)
             for (Transaction tx : transactions) {
-                digest.update(canonicalTransactionBytes(tx));
+                digest.update(tx.canonicalBytes());
             }
 
             // 3. World State (TreeMap guarantees sorted iteration)
@@ -102,21 +102,7 @@ public class Block implements Serializable {
         }
     }
 
-    /**
-     * Produces a canonical byte representation of a Transaction for hashing.
-     * This must be deterministic and include all semantically relevant fields.
-     */
-    private byte[] canonicalTransactionBytes(Transaction tx) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(tx.nonce()).append('|');
-        sb.append(tx.from() != null ? tx.from().toHexString() : "null").append('|');
-        sb.append(tx.to() != null ? tx.to().toHexString() : "null").append('|');
-        sb.append(tx.gasPrice() != null ? tx.gasPrice().toBigInteger().toString() : "0").append('|');
-        sb.append(tx.gasLimit()).append('|');
-        sb.append(tx.value() != null ? tx.value().toBigInteger().toString() : "0").append('|');
-        sb.append(tx.data() != null ? tx.data().toHexString() : "");
-        return sb.toString().getBytes(StandardCharsets.UTF_8);
-    }
+
 
     private static String toHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder("0x");
