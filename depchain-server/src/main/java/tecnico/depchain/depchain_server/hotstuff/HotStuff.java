@@ -571,6 +571,13 @@ public class HotStuff {
 		// Byzantine check: PRE-COMMIT must come from leader and carry a valid prepareQC
 		if (preCommitMsg.getSenderId() != leader) return false;
 
+		//Ensure block is good before accepting it
+		Block blk = proposal.getBlock();
+		if (blk == null ||
+			!decidedBlocks.contains(blk) ||
+			!EVM.getInstance().executeBlock(blk, ownAddress, false))
+			return false;
+
 		QuorumCertificate rcvPrepareQC = preCommitMsg.getJustify();
 		if (rcvPrepareQC != null
 				&& rcvPrepareQC.matchingQC(MsgType.PREPARE, currentView)
@@ -631,7 +638,7 @@ public class HotStuff {
 		Block blk = new Block(lastBlock == null ? null : lastBlock.getBlockHash(), txs, null);
 
 		if (!EVM.getInstance().executeBlock(blk, ownAddress, false))
-			return null; //TODO: Instead spam test blocks until it works
+			return null; //TODO: Instead spam test blocks until it works (needed?)
 
 		return blk;
 	}
