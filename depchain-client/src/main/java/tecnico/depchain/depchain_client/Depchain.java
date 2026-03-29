@@ -11,6 +11,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.tuweni.bytes.Bytes;
+import org.hyperledger.besu.datatypes.Address;
+import org.hyperledger.besu.datatypes.Wei;
+
+import tecnico.depchain.depchain_common.blockchain.SignedTransaction;
+import tecnico.depchain.depchain_common.blockchain.Transaction;
 import tecnico.depchain.depchain_common.broadcasts.BestEffortBroadcast;
 import tecnico.depchain.depchain_common.messages.ConfirmMessage;
 import tecnico.depchain.depchain_common.messages.TransactionMessage;
@@ -81,8 +87,8 @@ public class Depchain {
 	 * @return The seqNum assigned to this submission
 	 */
 	public boolean submitTransaction(TransactionMessage tx) {
-		//tx.sign(ownKey);
-		//FIXME: Trash for now
+		// Signing is now done inside createTransfer/createContractCall via SignedTransaction.signTransaction().
+		// submitTransaction only broadcasts the already-signed message.
 		long seqNum = tx.getSeqNum();
 
 		synchronized (pendingMessages) {
@@ -94,8 +100,8 @@ public class Depchain {
 		int maxRetries = 5;
 		int attempts = 0;
 
-		//System.out.println("[Depchain Client] Submitted tx seqNum=" + seqNum
-		//		+ " from=" + tx.getFrom() + " nonce=" + tx.getNonce());
+		System.out.println("[Depchain Client] Submitted tx seqNum=" + seqNum
+				+ " from=" + tx.getSignedTransaction().tx().from() + " nonce=" + tx.getSignedTransaction().tx().nonce());
 
 		while (attempts < maxRetries) {
 			broadcast.broadcast(tx.serialize());
@@ -129,39 +135,73 @@ public class Depchain {
 
 	/**
 	 * Convenience builder for a DepCoin transfer transaction.
-	 * Auto-increments the nonce.
+	 * Creates a Transaction record, signs it with Ed25519 via SignedTransaction,
+	 * wraps it in a TransactionMessage, and auto-increments the local nonce.
 	 *
 	 * @param to       Recipient hex address "0x..."
 	 * @param value    Amount in Wei (decimal string)
 	 * @param gasLimit Gas limit for this transaction
 	 * @param gasPrice Gas price in Wei (decimal string)
-	 * @return A ready-to-submit TransactionMessage
+	 * @return A ready-to-submit TransactionMessage (already signed)
 	 */
 	public TransactionMessage createTransfer(String to, String value, long gasLimit, String gasPrice) {
-		//if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
-		//TransactionMessage tx = new TransactionMessage(
-		//		clientId, currentNonce, ownAddress, to, gasPrice, gasLimit, value, "");
-		//this.currentNonce = this.currentNonce.add(BigInteger.ONE);
-		//return tx;
-		return null; //FIXME: Trash for now
+		if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
+
+		// Build the Transaction record with Besu types (now lives in depchain-common)
+		Transaction tx = new Transaction(
+				currentNonce,
+				Address.fromHexString(ownAddress),
+				Address.fromHexString(to),
+				Wei.of(new BigInteger(gasPrice)),
+				Wei.ZERO,  // maxPriorityFeePerGas (unused)
+				Wei.ZERO,  // maxFeePerGas (unused)
+				gasLimit,
+				Wei.of(new BigInteger(value)),
+				Bytes.EMPTY);  // no calldata for plain transfers
+
+		// Sign the transaction with Ed25519, producing a SignedTransaction
+		SignedTransaction signedTx = SignedTransaction.signTansaction(tx, ownKey);
+
+		// Wrap in transport message with clientId and seqNum
+		TransactionMessage msg = new TransactionMessage(clientId, signedTx);
+
+		// Nonce is incremented optimistically at creation time to allow pipelining
+		// multiple concurrent transactions. Use syncNonceWithServer() if desync occurs.
+		this.currentNonce = this.currentNonce.add(BigInteger.ONE);
+		return msg;
 	}
 
 	/**
 	 * Convenience builder for a smart contract call.
+	 * Creates a Transaction record with the ABI-encoded calldata, signs it,
+	 * and auto-increments the local nonce.
 	 *
 	 * @param contractAddress Contract hex address "0x..."
 	 * @param callData        ABI-encoded function call (hex string "0x...")
 	 * @param gasLimit        Gas limit for this transaction
 	 * @param gasPrice        Gas price in Wei (decimal string)
-	 * @return A ready-to-submit TransactionMessage
+	 * @return A ready-to-submit TransactionMessage (already signed)
 	 */
 	public TransactionMessage createContractCall(String contractAddress, String callData, long gasLimit, String gasPrice) {
-		//if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
-		//TransactionMessage tx = new TransactionMessage(
-		//		clientId, currentNonce, ownAddress, contractAddress, gasPrice, gasLimit, "0", callData);
-		//this.currentNonce = this.currentNonce.add(BigInteger.ONE);
-		//return tx;
-		return null; //FIXME: Trash for now
+		if (ownAddress == null) throw new IllegalStateException("Call setOwnAddress() before creating transactions");
+
+		// Build the Transaction record: value=0 for contract calls, data holds the ABI payload
+		Transaction tx = new Transaction(
+				currentNonce,
+				Address.fromHexString(ownAddress),
+				Address.fromHexString(contractAddress),
+				Wei.of(new BigInteger(gasPrice)),
+				Wei.ZERO,  // maxPriorityFeePerGas (unused)
+				Wei.ZERO,  // maxFeePerGas (unused)
+				gasLimit,
+				Wei.ZERO,  // no value transfer for contract calls
+				Bytes.fromHexString(callData));
+
+		SignedTransaction signedTx = SignedTransaction.signTansaction(tx, ownKey);
+		TransactionMessage msg = new TransactionMessage(clientId, signedTx);
+
+		this.currentNonce = this.currentNonce.add(BigInteger.ONE);
+		return msg;
 	}
 
 	// ── Network Handler ─────────────────────────────────────────────────

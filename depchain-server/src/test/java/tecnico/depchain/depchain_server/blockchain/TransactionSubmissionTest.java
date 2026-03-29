@@ -1,5 +1,6 @@
 package tecnico.depchain.depchain_server.blockchain;
 
+import org.apache.tuweni.bytes.Bytes;
 import org.hyperledger.besu.datatypes.Address;
 import org.hyperledger.besu.datatypes.Wei;
 import org.junit.jupiter.api.AfterEach;
@@ -45,7 +46,6 @@ public class TransactionSubmissionTest {
         KeyPairGenerator keyGen = KeyPairGenerator.getInstance("Ed25519");
         clientA = keyGen.generateKeyPair();
         clientB = keyGen.generateKeyPair();
-
         clientC = keyGen.generateKeyPair();
 
         // Inject mock clients into Membership
@@ -70,28 +70,51 @@ public class TransactionSubmissionTest {
         EVM.resetInstance();
     }
 
-    //WHERE IS THE GODDAMN 'TO' FIELD?
+    /**
+     * Helper: creates a Transaction record, signs it with Ed25519, and wraps it
+     * in a TransactionMessage ready for validator/mempool submission.
+     *
+     * Uses a dummy 'to' address ("0x00...01") for simple test transfers.
+     * value is set to "0" so only gas is deducted from the pending balance.
+     */
     private TransactionMessage createAndSignTx(int clientId, KeyPair keys, BigInteger nonce, String from, String gasPrice, long gasLimit) {
-        Transaction tx = new Transaction(); //FIXME: Fill in
+        // Build a complete Transaction record (the 'to' address is a dummy for tests)
+        Transaction tx = new Transaction(
+                nonce,
+                Address.fromHexString(from),
+                Address.fromHexString("0x0000000000000000000000000000000000000001"), // dummy recipient
+                Wei.of(new BigInteger(gasPrice)),
+                Wei.ZERO,   // maxPriorityFeePerGas (unused)
+                Wei.ZERO,   // maxFeePerGas (unused)
+                gasLimit,
+                Wei.ZERO,   // value (no transfer, just gas tests)
+                Bytes.EMPTY  // no calldata
+        );
+
+        // Sign with the sender's Ed25519 private key
         SignedTransaction signedTx = SignedTransaction.signTansaction(tx, keys.getPrivate());
-        TransactionMessage msg = new TransactionMessage(clientId, signedTx);
-        return msg;
+
+        // Wrap in the transport message
+        return new TransactionMessage(clientId, signedTx);
     }
 
-    //What is this testing??
+    /**
+     * Tests that the Ed25519 signing & verification works end-to-end through
+     * the SignedTransaction layer.
+     */
     @Test
     public void testTransactionMessageSigningAndVerification() throws Exception {
         TransactionMessage msg = createAndSignTx(0, clientA, BigInteger.ZERO, addrA, "10", 21000);
 
-        // Pass
-        assertTrue(msg.getSignedTransaction().verify(clientA.getPublic()), "Signature should easily verify with correct key");
+        // Correct key should pass
+        assertTrue(msg.getSignedTransaction().verify(clientA.getPublic()), "Signature should verify with correct key");
 
-        // Fail
+        // Wrong key should fail
         assertFalse(msg.getSignedTransaction().verify(clientB.getPublic()), "Signature should fail with wrong key");
 
-        // Tamper test
+        // Tamper test: flip a bit in the serialized form, verify the deserialized msg fails
         byte[] raw = msg.serialize();
-        raw[raw.length - 1] ^= 1; // flip a bit
+        raw[raw.length - 1] ^= 1;
         TransactionMessage tampered = TransactionMessage.deserialize(raw);
         assertFalse(tampered.getSignedTransaction().verify(clientA.getPublic()), "Tampered message should fail verification");
     }
@@ -122,6 +145,7 @@ public class TransactionSubmissionTest {
         TransactionMessage tx0 = createAndSignTx(0, clientA, BigInteger.ZERO, addrA, "10", 21000);
         TransactionMessage tx1 = createAndSignTx(0, clientA, BigInteger.ONE, addrA, "50", 21000);
 
+        // Bypass validator and add directly to test pure ordering
         mempool.addTransaction(tx0.getSignedTransaction());
         mempool.addTransaction(tx1.getSignedTransaction());
 
@@ -150,9 +174,6 @@ public class TransactionSubmissionTest {
         assertEquals(3, top.size());
 
         // Expected order: B:0@30 -> A:0@10 -> A:1@50
-        // Because initially, heads are A:0(10) and B:0(30). B wins. B gets removed.
-        // Then heads are A:0(10). A:0 wins. A:0 removed.
-        // Then heads are A:1(50). A:1 wins.
         assertEquals(addrB, top.get(0).from().toHexString());
         assertEquals(addrA, top.get(1).from().toHexString());
         assertEquals(BigInteger.ZERO, top.get(1).nonce());
@@ -172,31 +193,36 @@ public class TransactionSubmissionTest {
 
         assertEquals(BigInteger.valueOf(3), mempool.getPendingNonce(Address.fromHexString(addrA)));
 
+        // 3 txs * gasPrice(10) * gasLimit(21000) = 630000 Wei spent on gas
         long spent = 3 * 10 * 21000;
         assertEquals(Wei.of(1000000000L - spent), mempool.getPendingBalance(Address.fromHexString(addrA)));
     }
 
     @Test
     public void testValidatorRejectionCases() {
-        // Zero gasPrice
+        // Zero gasPrice — should be rejected by the re-added gasPrice > 0 check
         TransactionMessage txZeroGas = createAndSignTx(0, clientA, BigInteger.ZERO, addrA, "0", 21000);
-        assertFalse(validator.validate(txZeroGas), "Should reject zero gas limits/prices");
+        assertFalse(validator.validate(txZeroGas), "Should reject zero gasPrice");
 
-        //FIXME: Must redo, why is 'to' set to null?????
-        //// Invalid signature
-        //TransactionMessage txSig = new TransactionMessage(1, BigInteger.ZERO, addrA, null, "10", 21000, "0", "");
-        //txSig.sign(clientA.getPrivate()); // signed by A, but clientId is 1 (B)
-        //assertFalse(validator.validate(txSig), "Should reject invalid signature");
+        // Invalid signature — client A signs a tx but claims to be clientId=1 (client B)
+        // The spoofing check will catch that from=addrA doesn't match clientB's registered address
+        Transaction txForSig = new Transaction(
+                BigInteger.ZERO, Address.fromHexString(addrA),
+                Address.fromHexString("0x0000000000000000000000000000000000000001"),
+                Wei.of(10), Wei.ZERO, Wei.ZERO, 21000, Wei.ZERO, Bytes.EMPTY);
+        SignedTransaction signedBadId = SignedTransaction.signTansaction(txForSig, clientA.getPrivate());
+        TransactionMessage txBadId = new TransactionMessage(1, signedBadId); // clientId=1 (B) but from=addrA
+        assertFalse(validator.validate(txBadId), "Should reject: from address doesn't match clientId's registered address");
 
-        // Wrong nonce (gap)
+        // Wrong nonce (gap) — nonce 1 submitted when 0 is expected
         TransactionMessage txGap = createAndSignTx(0, clientA, BigInteger.ONE, addrA, "10", 21000);
         assertFalse(validator.validate(txGap), "Should reject nonce gap");
 
-        // Insufficient balance
+        // Insufficient balance — gasPrice=100000 * gasLimit=21000 = 2.1B Wei > 1B Wei funded
         TransactionMessage txPoor = createAndSignTx(0, clientA, BigInteger.ZERO, addrA, "100000", 21000);
         assertFalse(validator.validate(txPoor), "Should reject insufficient balance");
 
-        // Spoofing attack (Client A signing for Client B's address)
+        // Spoofing attack — Client A signs for Client B's address
         TransactionMessage txSpoof = createAndSignTx(0, clientA, BigInteger.ZERO, addrB, "10", 21000);
         assertFalse(validator.validate(txSpoof), "Should reject spoofed from address");
     }
@@ -220,12 +246,11 @@ public class TransactionSubmissionTest {
         );
 
         // Manually update EVM state to simulate tx0 and tx1 execution
-        // We do this manually to bypass Besu's precompiled native library (gnark) linkage errors on ARM64
         org.hyperledger.besu.evm.account.MutableAccount acc = evm.getUpdater().getAccount(Address.fromHexString(addrA));
         acc.setNonce(2);
         evm.getUpdater().commit();
 
-        // Notify mempool
+        // Notify mempool of committed block
         mempool.onBlockCommitted(blockTxs);
 
         // Expect 1 remaining tx (tx2)
