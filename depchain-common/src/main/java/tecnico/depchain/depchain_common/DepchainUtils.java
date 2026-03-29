@@ -45,4 +45,12 @@ public class DepchainUtils {
 			return new byte[32]; //Won't happen
 		}
 	}
+
+    public static String toHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder("0x");
+        for (byte b : bytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
 }

@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.TreeMap;
 
+import tecnico.depchain.depchain_common.DepchainUtils;
 import tecnico.depchain.depchain_common.blockchain.Transaction;
 
 /**
@@ -96,19 +97,9 @@ public class Block implements Serializable {
             }
 
             byte[] hashBytes = digest.digest();
-            return toHex(hashBytes);
+            return DepchainUtils.toHex(hashBytes);
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("SHA-256 not available", e);
         }
-    }
-
-
-
-    private static String toHex(byte[] bytes) {
-        StringBuilder sb = new StringBuilder("0x");
-        for (byte b : bytes) {
-            sb.append(String.format("%02x", b));
-        }
-        return sb.toString();
     }
 }
