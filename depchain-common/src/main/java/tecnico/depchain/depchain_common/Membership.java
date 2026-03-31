@@ -95,12 +95,12 @@ public class Membership {
 
 	public static PublicKey getAccountPublicKey(Address address) {
 		for (var member : members) {
-			if (member.getDepchainAddress() == address)
+			if (member.getDepchainAddress().equals(address))
 				return member.getPublicKey();
 		}
 
 		for (var client : clients) {
-			if (client.getDepchainAddress() == address)
+			if (client.getDepchainAddress().equals(address))
 				return client.getPublicKey();
 		}
 
