@@ -620,6 +620,9 @@ public class HotStuff {
 		if (blk != null && !decidedBlocks.contains(blk)) {
 			decidedBlocks.add(blk);
 			EVM.getInstance().executeBlock(blk, ownAddress, true);
+			// Populate block state after execution and recalculate hash
+			blk.setState(EVM.getInstance().getWorldState());
+			blk.setBlockHash(blk.calculateHash());
 		}
 	}
 
