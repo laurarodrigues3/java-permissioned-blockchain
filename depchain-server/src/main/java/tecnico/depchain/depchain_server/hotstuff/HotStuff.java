@@ -71,6 +71,7 @@ public class HotStuff {
 	private long baseTimeoutMs = DEFAULT_TIMEOUT_MS;
 	private long viewTimeoutMs = DEFAULT_TIMEOUT_MS;
 	private long viewDeadline;
+	private long blockBuildMarginMs = 500; // time reserved for protocol rounds after block is built
 
 	/**
 	 * @param replicaID       This replica's ID (0-indexed)
@@ -151,6 +152,15 @@ public class HotStuff {
 	public void setBaseTimeout(long timeoutMs) {
 		this.baseTimeoutMs = timeoutMs;
 		this.viewTimeoutMs = timeoutMs;
+	}
+
+	/**
+	 * Sets the margin (in ms) reserved after block building for the 3-phase
+	 * protocol to complete. Default is 500ms. Increase for test environments
+	 * where thread scheduling may add latency.
+	 */
+	public void setBlockBuildMargin(long marginMs) {
+		this.blockBuildMarginMs = marginMs;
 	}
 
 	public void setOutgoingFilter(BiFunction<Integer, Message, Message> filter) {
@@ -291,7 +301,7 @@ public class HotStuff {
 
 	// Tighter timing to propose blocks with present transactions
 	private long remainingBlockMs() {
-		return remainingViewMs() - 500; //Arbitrary value
+		return remainingViewMs() - blockBuildMarginMs;
 	}
 
 	private Message pullMessage(MsgType type, int viewNumber) throws InterruptedException {
@@ -446,14 +456,13 @@ public class HotStuff {
 
 					if (viewSucceeded) {
 						viewTimeoutMs = baseTimeoutMs;
+						Block decidedThisView = decidedBlocks.getLast();
+						if (onDecide != null) onDecide.accept(decidedThisView);
 					} else {
 						viewTimeoutMs = Math.min(viewTimeoutMs * 2, MAX_TIMEOUT_MS);
 					}
 					currentView++;
 					votedNodeThisView = null;
-
-                    Block decidedThisView = decidedBlocks.getLast();
-					if (onDecide != null) onDecide.accept(decidedThisView);
 				}
 			}
 		}
@@ -646,7 +655,7 @@ public class HotStuff {
 		//Ensure block is good before accepting it
 		Block blk = proposal.getBlock();
 		if (blk == null ||
-			!decidedBlocks.contains(blk) ||
+			decidedBlocks.contains(blk) ||
 			!EVM.getInstance().executeBlock(blk, ownAddress, false))
 			return false;
 
@@ -696,6 +705,9 @@ public class HotStuff {
 			// Populate block state after execution and recalculate hash
 			blk.setState(EVM.getInstance().getWorldState());
 			blk.setBlockHash(blk.calculateHash());
+
+			// Clean up executed transactions from the mempool
+			mempool.onBlockCommitted(blk.getTransactions());
 
 			// Persist block to disk
 			if (blockPersister != null) {

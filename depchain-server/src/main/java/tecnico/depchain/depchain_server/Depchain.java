@@ -208,9 +208,14 @@ public class Depchain {
 
 	private static void onDecide(Block blk) {
 		for (Transaction tx : blk.getTransactions()) {
-			long id = requestIdMap.get(tx);
+			Long id = requestIdMap.get(tx);
+			if (id == null) continue; // tx was submitted to a different replica
+
 			InetSocketAddress requester = requestSenderMap.get(tx);
+			if (requester == null) continue;
+
 			AuthenticatedPerfectLink link = links.get(requester);
+			if (link == null) continue;
 
 			ConfirmMessage msg = new ConfirmMessage(id, true);
 			link.transmit(msg.serialize());

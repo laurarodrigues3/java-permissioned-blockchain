@@ -106,8 +106,14 @@ public class Block implements Serializable {
                 AccountState as = entry.getValue();
                 digest.update(as.getBalance().getBytes(StandardCharsets.UTF_8));
                 digest.update(Long.toString(as.getNonce()).getBytes(StandardCharsets.UTF_8));
-                if (as.getCodeHash() != null) {
-                    digest.update(as.getCodeHash().getBytes(StandardCharsets.UTF_8));
+                if (as.getCode() != null) {
+                    digest.update(as.getCode().getBytes(StandardCharsets.UTF_8));
+                }
+                if (as.getStorage() != null) {
+                    for (var storageEntry : as.getStorage().entrySet()) {
+                        digest.update(storageEntry.getKey().getBytes(StandardCharsets.UTF_8));
+                        digest.update(storageEntry.getValue().getBytes(StandardCharsets.UTF_8));
+                    }
                 }
             }
 
