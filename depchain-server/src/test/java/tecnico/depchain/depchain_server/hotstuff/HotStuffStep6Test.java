@@ -77,7 +77,9 @@ public class HotStuffStep6Test {
         }
     }
 
-    private void startAll() {
+    private void startAll() throws InterruptedException {
+        // Allow DH handshakes to complete before starting the protocol loop
+        Thread.sleep(2000);
         for (int i = 0; i < replicas.size(); i++) {
             final int idx = i;
             replicas.get(i).setOnDecide(blk -> decidedPerReplica.get(idx).add(blk));
@@ -85,7 +87,9 @@ public class HotStuffStep6Test {
         }
     }
 
-    private void startAllExcept(int crashedId) {
+    private void startAllExcept(int crashedId) throws InterruptedException {
+        // Allow DH handshakes to complete before starting the protocol loop
+        Thread.sleep(2000);
         for (int i = 0; i < replicas.size(); i++) {
             if (i == crashedId) continue;
             final int idx = i;
