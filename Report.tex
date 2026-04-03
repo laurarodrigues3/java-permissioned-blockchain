@@ -1,0 +1,190 @@
+\documentclass{llncs}
+
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{float}
+\usepackage{hyperref}
+
+\begin{document}
+\raggedbottom
+
+\title{DepChain: A Dependable Permissioned Blockchain}
+\titlerunning{DepChain: A Dependable Permissioned Blockchain}
+
+\author{Diogo Diniz (ist1106196) \and Laura Rodrigues (ist1116260) \and Luís Rosa (ist1116307)}
+
+\institute{Instituto Superior Técnico, Universidade de Lisboa, Portugal\\
+\email{\{diogo.cruz.diniz, laurarodrigues, luisalexandre\}@tecnico.ulisboa.pt}}
+
+\maketitle
+
+\begin{abstract}
+This report describes DepChain, a permissioned blockchain that combines a BFT consensus layer (Basic HotStuff~\cite{hotstuff}) with a transaction processing layer built on the Hyperledger Besu EVM library~\cite{besu}. We detail the layered communication stack over UDP, the consensus protocol, the gas-based execution model, and an ERC-20 token with frontrunning-resistant \texttt{approve()}. For each layer we identify the relevant threats and the mechanisms that address them.
+\end{abstract}
+
+\keywords{Blockchain \and Byzantine Fault Tolerance \and HotStuff \and ERC-20 \and Dependability}
+
+\section{Introduction}
+
+DepChain is a simplified permissioned blockchain with static membership. All participants---blockchain members (replicas) and clients---are known before system start, together with their Ed25519 public keys, network addresses, and on-chain account addresses, forming a pre-distributed PKI.
+
+The system was built in two stages. Stage~1 implemented the consensus layer: a layered UDP communication stack (Fair Loss $\to$ Stubborn $\to$ Authenticated Perfect Links) and the Basic HotStuff BFT consensus algorithm with leader rotation and crash/Byzantine fault tolerance. Stage~2 added the application layer: a native cryptocurrency (DepCoin), smart contract execution via the Besu EVM, a gas mechanism, block persistence, and a frontrunning-resistant ERC-20 token (IST Coin).
+
+The system tolerates up to $f = \lfloor(N{-}1)/3\rfloor$ Byzantine replicas and any number of Byzantine clients.
+
+\section{Architecture and Design}
+
+DepChain is structured into three Maven modules:
+\begin{itemize}
+    \item \textbf{depchain-common} --- UDP link stack (FairLossLink, StubbornLink, AuthenticatedPerfectLink), BestEffortBroadcast, message types, \texttt{Transaction}/\texttt{SignedTransaction}, and \texttt{Membership} configuration.
+    \item \textbf{depchain-server} --- Blockchain replica: HotStuff consensus, EVM execution (\texttt{TransactionRunner}), mempool, block persistence (\texttt{BlockPersister}), genesis loading, and crash recovery.
+    \item \textbf{depchain-client} --- Client library: signs and broadcasts transactions to all replicas, collects $f{+}1$ matching confirmations.
+\end{itemize}
+
+\subsection{Communication Stack}
+
+A design constraint is that TLS is not allowed; all communication uses UDP. We bridge the gap between raw UDP and the needs of BFT consensus with a layered stack, following the abstractions from class:
+
+\begin{enumerate}
+    \item \textbf{FairLossLink} --- Raw UDP sockets. Messages may be lost, duplicated, or reordered.
+    \item \textbf{StubbornLink} --- Retransmits messages periodically until an ACK is received, handling packet loss.
+    \item \textbf{AuthenticatedPerfectLink (APL)} --- Built on top of StubbornLink. Performs an ephemeral X25519 Diffie-Hellman key exchange, authenticated by signing the ephemeral public key with the node's Ed25519 identity key. The DH shared secret is hashed (SHA-256) to derive a per-session symmetric key. Every subsequent message carries an HMAC-SHA256 tag, verified with constant-time comparison (\texttt{MessageDigest.isEqual}). A sequence number with high-water-mark tracking provides deduplication.
+    \item \textbf{BestEffortBroadcast (BEB)} --- Maintains one APL per peer and broadcasts by iterating over all links. Used both for inter-replica consensus messages and for client-to-replica communication.
+\end{enumerate}
+
+\subsection{Consensus Layer: Basic HotStuff}
+
+The consensus follows the Basic HotStuff protocol~\cite{hotstuff} (Algorithm~2, without chaining). The system requires $N = 3f + 1$ replicas. The leader for view $v$ is determined by $v \bmod N$.
+
+A successful view proceeds through four phases: \textsc{prepare}, \textsc{pre-commit}, \textsc{commit}, and \textsc{decide}. In each phase the leader broadcasts a proposal (or a QC from the previous phase) and collects $N{-}f$ signed votes. Replicas verify each incoming proposal against the \texttt{safeNode} predicate (the proposal must extend the locked QC's node, or carry a QC from a higher view) and check that every received QC is cryptographically valid before updating their \texttt{prepareQC} or \texttt{lockedQC}.
+
+\paragraph{Quorum Certificates.} DepChain uses BLS threshold signatures (JPBC library) for QCs. Each replica signs its vote with a BLS partial share; the leader aggregates $N{-}f$ valid shares via Lagrange interpolation into a single constant-size threshold signature. Invalid partial shares fail verification and are discarded without blocking the quorum. Ed25519 signatures are also used as a per-message authentication layer: every consensus message carries an Ed25519 signature that is verified on receipt, before the message enters the processing queue.
+
+\paragraph{Failure detection and view change.} Each view has a timeout. If the timeout expires (no DECIDE reached), the replica sends a \textsc{new\_view} message carrying its highest \texttt{prepareQC} to the next leader, advances \texttt{currentView}, and doubles the timeout (exponential backoff, capped at a maximum). On success the timeout resets to the base value. This mechanism ensures liveness: a faulty leader is eventually rotated out.
+
+\subsection{Client--Replica Interaction}
+
+Clients do not participate in consensus. The interaction model is:
+
+\begin{enumerate}
+    \item The client signs a \texttt{Transaction} with Ed25519 (producing a \texttt{SignedTransaction}), wraps it in a \texttt{TransactionMessage}, and broadcasts it to all replicas via BEB.
+    \item Each replica verifies the Ed25519 signature against the sender's registered public key. If valid, the transaction is added to the local mempool and mapped to the originating client.
+    \item When a block containing the transaction is decided, the replica sends a \texttt{ConfirmMessage} (accepted/rejected) back to the client over the APL.
+    \item The client waits for $f{+}1$ matching \texttt{ConfirmMessage} responses, guaranteeing that at least one honest replica confirmed the result. If no quorum is reached within a timeout, the client retransmits (up to a configurable number of retries).
+\end{enumerate}
+
+For crash recovery, the client can query replicas for its current committed nonce (\texttt{syncNonce}), again requiring $f{+}1$ matching replies.
+
+\subsection{Transaction Processing}
+
+\paragraph{Genesis.} The system starts from a JSON genesis file that defines initial EOA balances and a list of deployment transactions (including the IST Coin contract). \texttt{GenesisLoader} creates the accounts in the EVM world state and executes the deployment transactions via \texttt{TransactionRunner}.
+
+\paragraph{Mempool and ordering.} Incoming transactions are stored in per-sender queues keyed by nonce (ascending). During block construction, the leader repeatedly picks the queue head with the highest \texttt{gas\_price}, ensuring that nonces are respected per sender while maximizing fee revenue.
+
+\paragraph{Execution.} \texttt{TransactionRunner} handles three cases: plain DepCoin transfers, contract calls, and contract creation (\texttt{to = null}). For each transaction it validates the nonce, checks that the sender's balance covers the upfront cost (\texttt{value + gas\_price $\times$ gas\_limit}), deducts that amount, and delegates bytecode execution to \texttt{EVMExecutor} from the Besu \texttt{evm} library (spec: Cancun). A custom \texttt{OperationTracer} captures the remaining gas and success/revert status. After execution:
+\begin{itemize}
+    \item The sender is refunded unused gas: \texttt{gas\_price $\times$ (gas\_limit $-$ gas\_used)}.
+    \item The actual fee (\texttt{gas\_price $\times$ gas\_used}) is credited to the block proposer (minter).
+    \item On revert, value transfers are rolled back but gas is still consumed.
+\end{itemize}
+
+\paragraph{Block structure and persistence.} Each \texttt{Block} contains: \texttt{previousBlockHash}, a list of \texttt{Transaction}s, and a \texttt{state} map (address $\to$ balance, nonce, code, storage). After a block is decided and executed, the replica snapshots the full EVM world state into the block, computes its hash, and persists it as JSON via \texttt{BlockPersister}. On startup, replicas load all persisted blocks, restore the world state from the last block, and set the view number accordingly.
+
+\subsection{IST Coin: ERC-20 with Frontrunning Protection}
+
+The IST Coin smart contract (Solidity, compiled to EVM bytecode) implements the ERC-20 standard~\cite{erc20} with name ``IST Coin'', symbol ``IST'', 2~decimals, and a total supply of 100 million units. It inherits from the OpenZeppelin ERC-20 base~\cite{openzeppelin}.
+
+To mitigate Approval Frontrunning, we override \texttt{approve()}: if the current allowance for the spender is non-zero and the new amount is also non-zero, the call reverts. The user must first set the allowance to zero, then set the new value in a separate transaction. This prevents a malicious spender from racing a reduced allowance by consuming the old one first.
+
+\section{Threat Analysis}
+
+We assume a hostile environment: up to $f$ replicas and any number of clients may be Byzantine and may collude.
+
+\subsection{Network Threats}
+
+\textbf{Message forgery / MitM.} An attacker intercepting UDP traffic cannot forge or modify messages because every packet carries an HMAC-SHA256 over the payload, keyed with a DH-derived session secret. The HMAC is compared using \texttt{MessageDigest.isEqual} (constant-time) to prevent timing side-channels. Packets with invalid MACs are silently dropped.
+
+\textbf{Message replay.} At the link layer, 8-byte sequence numbers with high-water-mark tracking prevent duplicate delivery. At the consensus layer, votes are bound to a specific view number. At the application layer, account nonces ensure each signed transaction executes at most once.
+
+\subsection{Consensus Threats}
+
+\textbf{Leader equivocation.} A Byzantine leader sending different proposals to different replicas cannot cause a safety violation. Replicas only vote for proposals that satisfy the \texttt{safeNode} predicate (extends from locked QC or carries a higher-view QC). Since a valid QC requires $N{-}f$ votes, at most one proposal can gather a QC per view---conflicting proposals cannot both reach quorum.
+
+\textbf{Crash and silent Byzantine faults.} If the leader crashes or withholds messages, replicas time out, send \textsc{new\_view} to the next leader, and advance the view with exponential backoff. As long as $N{-}f$ replicas are honest, a correct leader is eventually reached and progress resumes.
+
+\textbf{Forged QCs.} Before a replica updates its \texttt{prepareQC} or \texttt{lockedQC}, it verifies the QC's BLS threshold signature and checks that the view number is consistent. A Byzantine leader cannot fabricate a valid threshold signature without collecting $N{-}f$ genuine partial shares.
+
+\subsection{Application Threats}
+
+\textbf{Client spoofing.} Every transaction must carry a valid Ed25519 signature matching the sender's registered public key. Replicas verify this before adding the transaction to the mempool. Invalid signatures are discarded, preventing unauthorized transfers.
+
+\textbf{Overspending / negative balances.} Transactions within a block are executed sequentially. Before each execution, \texttt{TransactionRunner} checks that the sender's current balance covers the upfront cost. If not, the transaction is rejected. This prevents concurrent overspend attempts from succeeding.
+
+\textbf{Nonce manipulation.} The nonce must match the sender's current state nonce exactly. Replayed transactions (same nonce) are rejected. Out-of-order nonces are also rejected.
+
+\textbf{Approval Frontrunning.} As described in Section~2.6, the modified \texttt{approve()} reverts unless the current allowance is zero or the new value is zero, eliminating the double-spend vector inherent in the standard ERC-20 \texttt{approve}.
+
+\section{Dependability Guarantees}
+
+\textbf{Safety.} If an honest replica commits block $B$ at height $h$, no honest replica commits a different block $B' \neq B$ at the same height. This follows from the HotStuff protocol: a block is only committed after gathering QCs across three phases (PREPARE, PRE-COMMIT, COMMIT), each requiring $N{-}f$ votes. The \texttt{safeNode} predicate and the locking mechanism (\texttt{lockedQC}) prevent replicas from voting for conflicting branches. Additionally, replicas verify the QC attached to each proposal before voting, so a Byzantine leader cannot bypass the quorum requirement.
+
+\textbf{Liveness.} Client transactions are eventually executed, provided the network eventually delivers messages and at least $N{-}f$ replicas are correct. The timeout-based view rotation with exponential backoff ensures that faulty leaders do not block the system indefinitely. When a correct leader is reached, it collects $N{-}f$ \textsc{new\_view} messages, picks the highest valid QC, and drives the view to completion.
+
+\textbf{Integrity.} The blockchain state is deterministic: all honest replicas execute the same transactions in the same order and arrive at the same world state. Block hashes chain each block to its predecessor, and the full world state is persisted with each block for crash recovery.
+
+\textbf{Non-repudiation.} Every transaction is Ed25519-signed by the client. The signature is verified by replicas before execution and is stored as part of the committed block. A client cannot deny having issued a transaction that appears in the chain.
+
+\section{Testing}
+
+The test suite comprises 45 JUnit~5 tests across 11 classes, summarized below.
+
+\textbf{Network layer.} We test APL delivery, stubborn retransmission, and rejection of messages signed with wrong Ed25519 keys (simulating a Byzantine impostor).
+
+\textbf{Consensus layer.} Tests use a custom \texttt{outgoingFilter} callback on HotStuff instances to intercept and drop messages, simulating crash faults and silent Byzantine behavior. We verify that consensus completes with one crashed replica ($f{=}1$, $N{=}4$), that crashed replicas do not decide, and that a silent Byzantine node does not prevent the remaining honest replicas from reaching agreement.
+
+\textbf{Execution layer.} We test genesis loading, contract deployment, DepCoin transfers with correct gas accounting, balance and nonce validation, block save/load round-trips, and hash determinism. Byzantine client tests cover spoofed signatures, overspend attempts, nonce replay, and double-spend at execution level.
+
+\textbf{ERC-20 and frontrunning.} We verify that \texttt{decimals()} returns~2, that transfers and \texttt{transferFrom} work correctly, and that \texttt{approve()} from a non-zero allowance to another non-zero value reverts. The safe path (set to zero, then set new value) is also tested.
+
+\begin{table}[H]
+\centering
+\caption{Test suite overview: 45 tests across 11 classes, grouped by layer.}
+\label{tab:test_summary}
+{\small
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Test Class} & \textbf{Properties Validated} & \textbf{\#} \\ \midrule
+\multicolumn{3}{@{}l}{\textit{Network \& Cryptography}} \\ \cmidrule(l){1-3}
+HotStuffStep3Test        & Stubborn retransmission; APL rejects forged keys          & 3 \\
+CryptoServiceTest        & Ed25519 signing; BLS threshold aggregation; QC integration & 3 \\
+HotStuffStep4Test        & TreeNode hash determinism; message serialization; QC verify & 5 \\ \midrule
+\multicolumn{3}{@{}l}{\textit{Consensus}} \\ \cmidrule(l){1-3}
+HotStuffStep5Test        & Block decision; multi-view consecutive progress            & 3 \\
+HotStuffStep6Test        & Liveness under crash ($f{=}1$); silent Byzantine tolerance  & 3 \\ \midrule
+\multicolumn{3}{@{}l}{\textit{Execution \& State}} \\ \cmidrule(l){1-3}
+GenesisAndEVMTest        & Genesis load; IST Coin deploy; world state snapshot/restore & 6 \\
+TransactionRunnerTest    & Gas accounting; minter reward; balance \& nonce validation  & 5 \\
+MempoolTest              & Nonce ordering; gas-price priority; gas cap; commit cleanup  & 4 \\
+BlockPersistenceTest     & Block save/load round-trip; hash determinism                & 4 \\ \midrule
+\multicolumn{3}{@{}l}{\textit{Byzantine Clients \& Smart Contract}} \\ \cmidrule(l){1-3}
+ByzantineClientTest      & Spoofed signature; overspend; nonce replay; double-spend    & 4 \\
+ISTCoinFrontrunningTest  & Frontrunning revert; safe re-approval; transferFrom; decimals & 5 \\ \midrule
+\multicolumn{2}{@{}l}{\textbf{Total}} & \textbf{45} \\
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\section{Conclusion}
+
+DepChain implements a permissioned blockchain with BFT consensus (Basic HotStuff), authenticated UDP communication, deterministic EVM execution, and a frontrunning-resistant ERC-20 token. The layered architecture separates communication, consensus, and application concerns. The threat analysis and test suite demonstrate that the system maintains safety and liveness under Byzantine faults, prevents unauthorized state modifications, and correctly handles the approval frontrunning vulnerability.
+
+\begin{thebibliography}{4}
+\bibitem{hotstuff} Yin, M., Malkhi, D., Reiter, M.K., Gueta, G.G., Abraham, I.: HotStuff: BFT Consensus Optimized for the Chain. In: PODC (2019). \url{https://arxiv.org/abs/1803.05069}
+\bibitem{besu} Hyperledger Besu Ethereum Client. \url{https://github.com/hyperledger/besu}
+\bibitem{erc20} ERC-20 Token Standard. \url{https://ethereum.org/en/developers/docs/standards/tokens/erc-20}
+\bibitem{openzeppelin} OpenZeppelin ERC-20 Implementation. \url{https://github.com/OpenZeppelin/openzeppelin-contracts}
+\end{thebibliography}
+
+\end{document}
