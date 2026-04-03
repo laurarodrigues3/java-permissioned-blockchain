@@ -60,6 +60,10 @@ public class TransactionRunner {
 		MutableAccount sender = updater.getAccount(tx.from());
 		MutableAccount minterAccount = updater.getAccount(minter);
 
+		// Nonce validation - must match expected next nonce from state
+		if (tx.nonce() != sender.getNonce() + 1)
+			return null;
+
 		long gasLimit = tx.gasLimit();
 		if (gasLimit < BASE_FEE_GAS || tx.gasPrice().isZero()) return null;
 
@@ -71,8 +75,9 @@ public class TransactionRunner {
 		// Deduct upfront cost
 		sender.setBalance(sender.getBalance().subtract(upfrontCost));
 
-		// Generate contract address: keccak256(rlp(sender, nonce))
-		Address contractAddress = Address.contractAddress(tx.from(), tx.nonce());
+		// Generate contract address using sender's actual state nonce (N+1)
+		// This prevents Byzantine clients from manipulating tx.nonce() to cause address collisions
+		Address contractAddress = Address.contractAddress(tx.from(), sender.getNonce() + 1);
 
 		// Create the contract account in the world updater before running init code
 		MutableAccount contractAccount = updater.createAccount(contractAddress);
