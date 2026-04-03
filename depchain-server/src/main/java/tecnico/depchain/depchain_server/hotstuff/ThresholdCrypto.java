@@ -2,8 +2,10 @@ package tecnico.depchain.depchain_server.hotstuff;
 
 import java.io.ByteArrayInputStream;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -173,19 +175,37 @@ public class ThresholdCrypto {
 		public Map<Integer, byte[]> publicShares;
 	}
 
+	/**
+	 * Generates deterministic threshold crypto parameters.
+	 * Uses a fixed seed for the curve generation and element derivation,
+	 * ensuring all replicas produce identical cryptographic parameters.
+	 */
 	public static DealerParams generateParams(int threshold, int numReplicas) {
+		// Use a fixed seed for deterministic curve generation
+		SecureRandom fixedRandom = new SecureRandom();
+		fixedRandom.setSeed("DepChain-Deterministic-Threshold-2024".getBytes(StandardCharsets.UTF_8));
+
 		TypeACurveGenerator cg = new TypeACurveGenerator(160, 512);
+		cg.setRandom(fixedRandom);
 		PropertiesParameters params = (PropertiesParameters) cg.generate();
 		Pairing pairing = PairingFactory.getPairing(params);
 
 		Field<?> g1 = pairing.getG1();
 		Field<?> zr = pairing.getZr();
 
-		Element generator = g1.newRandomElement().getImmutable();
+		// Use deterministic element generation from fixed seeds
+		// This ensures all replicas produce identical threshold parameters
+		Element generator = g1.newElementFromHash(
+			"DepChain-Threshold-Generator-2024".getBytes(StandardCharsets.UTF_8), 0,
+			"DepChain-Threshold-Generator-2024".getBytes(StandardCharsets.UTF_8).length
+		).getImmutable();
 
 		Element[] coefs = new Element[threshold];
 		for (int i = 0; i < threshold; i++) {
-			coefs[i] = zr.newRandomElement().getImmutable();
+			// Derive polynomial coefficients from deterministic seeds
+			String seed = "DepChain-Coef-" + i + "-2024";
+			byte[] seedBytes = seed.getBytes(StandardCharsets.UTF_8);
+			coefs[i] = zr.newElementFromHash(seedBytes, 0, seedBytes.length).getImmutable();
 		}
 
 		Element globalSecretKey = coefs[0];
