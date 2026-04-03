@@ -14,7 +14,7 @@ public record SignedTransaction(
 		try {
 			Signature sig = Signature.getInstance("Ed25519");
 			sig.initSign(key);
-			sig.update(tx.serialize());
+			sig.update(tx.canonicalBytes());
 			byte[] signature = sig.sign();
 			return new SignedTransaction(tx, signature);
 		} catch (Exception e) {
@@ -27,7 +27,7 @@ public record SignedTransaction(
 		try {
 			Signature sig = Signature.getInstance("Ed25519");
 			sig.initVerify(key);
-			sig.update(tx.serialize());
+			sig.update(tx.canonicalBytes());
 			return sig.verify(this.signature);
 		} catch (Exception e) {
 			return false;
