@@ -45,13 +45,17 @@ public class TransactionRunner {
 			return false;
 
 		// Nonce check
-		if (tx.nonce() != sender.getNonce() + 1)
+		if (tx.nonce() != sender.getNonce())
 			return false;
 
-		if (tx.data() != null)
+		if (tx.data() != null && !tx.data().isEmpty())
 			if (!executeContract(tx)) return false;
-		if (tx.value() != Wei.ZERO)
+		if (!tx.value().isZero())
 			if (!executeTransfer(tx)) return false;
+
+		// Increment sender nonce after successful execution
+		MutableAccount mutableSender = updater.getAccount(tx.from());
+		mutableSender.setNonce(mutableSender.getNonce() + 1);
 
 		return true;
 	}
@@ -61,7 +65,7 @@ public class TransactionRunner {
 		MutableAccount minterAccount = updater.getAccount(minter);
 
 		// Nonce validation - must match expected next nonce from state
-		if (tx.nonce() != sender.getNonce() + 1)
+		if (tx.nonce() != sender.getNonce())
 			return null;
 
 		long gasLimit = tx.gasLimit();
@@ -75,9 +79,9 @@ public class TransactionRunner {
 		// Deduct upfront cost
 		sender.setBalance(sender.getBalance().subtract(upfrontCost));
 
-		// Generate contract address using sender's actual state nonce (N+1)
+		// Generate contract address using sender's actual state nonce
 		// This prevents Byzantine clients from manipulating tx.nonce() to cause address collisions
-		Address contractAddress = Address.contractAddress(tx.from(), sender.getNonce() + 1);
+		Address contractAddress = Address.contractAddress(tx.from(), sender.getNonce());
 
 		// Create the contract account in the world updater before running init code
 		MutableAccount contractAccount = updater.createAccount(contractAddress);
@@ -110,6 +114,9 @@ public class TransactionRunner {
 		if (minterAccount != null) {
 			minterAccount.setBalance(minterAccount.getBalance().add(actualFee));
 		}
+
+		// Increment sender nonce after contract creation attempt
+		sender.setNonce(sender.getNonce() + 1);
 
 		return contractAddress;
 	}
