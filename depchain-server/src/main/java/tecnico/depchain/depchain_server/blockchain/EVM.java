@@ -133,8 +133,8 @@ public class EVM {
 	 * Returns a snapshot of the current World State as a TreeMap (sorted by address).
 	 * This is used to populate the {@code state} field of a {@link Block} before persistence.
 	 *
-	 * For each known address, reads balance, nonce, and (for contracts) a SHA-256 hash
-	 * of the deployed bytecode to ensure contract integrity without bloating the JSON.
+	 * For EOAs: captures balance and nonce.
+	 * For Contract Accounts: captures balance, nonce, bytecode, and storage slots.
 	 *
 	 * @return TreeMap of address → AccountState, deterministically ordered
 	 */
@@ -147,13 +147,26 @@ public class EVM {
 
 			String balance = account.getBalance().toBigInteger().toString();
 			long nonce = account.getNonce();
-			String codeHash = null;
+			String code = null;
+			TreeMap<String, String> storage = new TreeMap<>();
 
+			// For contract accounts, capture bytecode and storage
 			if (account.hasCode()) {
-				codeHash = sha256Hex(account.getCode().toArrayUnsafe());
+				Bytes codeBytes = account.getCode();
+				code = codeBytes.toHexString();
+
+				// Capture storage slots
+				// Storage entries are accessed via iteration over stored values
+				for (var storageEntry : account.getStorageEntries()) {
+					String slotKey = storageEntry.getKey().toHexString();
+					String slotValue = storageEntry.getValue() != null
+						? storageEntry.getValue().toHexString()
+						: "0x0";
+					storage.put(slotKey, slotValue);
+				}
 			}
 
-			stateMap.put(addr.toHexString(), new AccountState(balance, nonce, codeHash));
+			stateMap.put(addr.toHexString(), new AccountState(balance, nonce, code, storage));
 		}
 
 		return stateMap;
@@ -163,6 +176,9 @@ public class EVM {
 	 * Restores the EVM world state from a persisted state snapshot.
 	 * Used during crash recovery to inject the last known state directly,
 	 * avoiding the need to replay all transactions.
+	 *
+	 * For EOAs: restores balance and nonce.
+	 * For Contract Accounts: also restores bytecode and storage slots.
 	 *
 	 * @param stateMap TreeMap of address → AccountState from the last persisted block
 	 */
@@ -179,8 +195,21 @@ public class EVM {
 			account.setBalance(Wei.of(new java.math.BigInteger(acctState.getBalance())));
 			account.setNonce(acctState.getNonce());
 
-			// Note: contract code is not stored in the state (only codeHash for integrity)
-			// Contracts would need to be redeployed or code stored separately
+			// Restore contract bytecode and storage if present
+			if (acctState.getCode() != null && !acctState.getCode().isEmpty()) {
+				Bytes codeBytes = Bytes.fromHexString(acctState.getCode());
+				account.setCode(codeBytes);
+
+				// Restore storage slots
+				if (acctState.getStorage() != null) {
+					for (var storageEntry : acctState.getStorage().entrySet()) {
+						org.hyperledger.besu.datatypes.Hash slotKey =
+							org.hyperledger.besu.datatypes.Hash.fromHexString(storageEntry.getKey());
+						Bytes slotValue = Bytes.fromHexString(storageEntry.getValue());
+						account.setStorageValue(slotKey, slotValue);
+					}
+				}
+			}
 
 			knownAddresses.add(addr);
 		}
